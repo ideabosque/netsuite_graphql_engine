@@ -57,13 +57,6 @@ def funct_decorator(cache_duration=1):
                     assert (
                         args[0].context.get("setting").get("ASYNC_FUNCTIONS")
                     ), "The setting doesn't have ASYNC_FUNCTION."
-                    dispatch_async_function(
-                        args[0],
-                        args[0]
-                        .context["setting"]["ASYNC_FUNCTIONS"]
-                        .get(function_request.function_name),
-                        function_request.request_id,
-                    )
                     function_request.update(
                         actions=[
                             FunctionRequestModel.status.set("in_progress"),
@@ -71,6 +64,13 @@ def funct_decorator(cache_duration=1):
                                 datetime.now(tz=timezone("UTC"))
                             ),
                         ]
+                    )
+                    dispatch_async_function(
+                        args[0],
+                        args[0]
+                        .context["setting"]["ASYNC_FUNCTIONS"]
+                        .get(function_request.function_name),
+                        function_request.request_id,
                     )
                 if function_request.status == "initial" and manual_dispatch:
                     function_request.update(
