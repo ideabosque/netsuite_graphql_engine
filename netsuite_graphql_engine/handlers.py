@@ -180,27 +180,24 @@ def monitor_decorator(original_function):
 
 
 def object_to_dict(obj):
+    def handle_value(value):
+        if isinstance(value, list):
+            return [handle_value(item) for item in value]
+        elif isinstance(value, dict):
+            return {key: handle_value(val) for key, val in value.items()}
+        elif hasattr(value, "__dict__"):
+            return object_to_dict(value)
+        elif isinstance(value, datetime):
+            return value.strftime(datetime_format)  # You should define datetime_format
+        else:
+            return value
+
     if not hasattr(obj, "__dict__"):
         raise ValueError("The input is not an object with attributes.")
 
     obj_dict = {}
-    for key in obj.__dict__["__values__"].keys():
-        value = obj.__dict__["__values__"][key]
-        # If the attribute is a list, convert each element to a dictionary if it is an object
-        if isinstance(value, list):
-            value_list = []
-            for item in value:
-                if hasattr(item, "__dict__"):
-                    value_list.append(object_to_dict(item))
-                else:
-                    value_list.append(item)
-            value = value_list
-        # If the attribute is another object, recursively convert it to a dictionary
-        elif hasattr(value, "__dict__"):
-            value = object_to_dict(value)
-        elif isinstance(value, datetime):
-            value = datetime.strftime(value, datetime_format)
-        obj_dict[key] = value
+    for key, value in obj.__dict__["__values__"].items():
+        obj_dict[key] = handle_value(value)
 
     return obj_dict
 
@@ -395,15 +392,20 @@ def insert_update_record_staging(record_type, record):
         RecordStagingModel.internal_id == record.internalId,
     )
     if count == 0:
-        RecordStagingModel(
-            record_type,
-            record.internalId,
-            **{
-                "data": object_to_dict(record),
-                "created_at": datetime.now(tz=timezone("UTC")),
-                "updated_at": datetime.now(tz=timezone("UTC")),
-            },
-        ).save()
+        try:
+            _record = object_to_dict(record)
+            RecordStagingModel(
+                record_type,
+                record.internalId,
+                **{
+                    "data": _record,
+                    "created_at": datetime.now(tz=timezone("UTC")),
+                    "updated_at": datetime.now(tz=timezone("UTC")),
+                },
+            ).save()
+        except:
+            print(_record)
+            raise
     else:
         record_staging = RecordStagingModel.get(record_type, record.internalId)
         record_staging.update(
