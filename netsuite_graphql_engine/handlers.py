@@ -252,17 +252,13 @@ def dispatch_async_function(info, async_function, request_id):
 
 
 def get_data_detail(info, record_type, internal_ids):
-    requested_fields = extract_requested_fields(info)
-
-    if "data" in requested_fields:
-        if len(internal_ids) == 0:
-            return []
-        results = RecordStagingModel.updated_at_index.query(
-            record_type,
-            RecordStagingModel.internal_id.is_in(*internal_ids),
-        )
-        return [record.data.__dict__["attribute_values"] for record in results]
-    return None
+    if len(internal_ids) == 0:
+        return []
+    results = RecordStagingModel.updated_at_index.query(
+        record_type,
+        RecordStagingModel.internal_id.is_in(*internal_ids),
+    )
+    return [record.data.__dict__["attribute_values"] for record in results]
 
 
 def extract_requested_fields(info):
@@ -275,11 +271,15 @@ def extract_requested_fields(info):
         for selection in selection_set:
             if type(selection).__name__ == "Field":
                 fields.append(selection.name.value)
+                if selection.selection_set:
+                    fields.extend(extract_fields(selection.selection_set.selections))
             elif type(selection).__name__ == "FragmentSpread":
                 fragment = info.fragments[selection.name.value]
                 fields.extend(extract_fields(fragment.selection_set.selections))
             elif type(selection).__name__ == "InlineFragment":
                 fields.extend(extract_fields(selection.selection_set.selections))
+            else:
+                continue
         return fields
 
     requested_fields = extract_fields(field_nodes)
@@ -302,7 +302,13 @@ def get_function_request(info, **kwargs):
     if request_id:
         function_request = FunctionRequestModel.get(function_name, request_id)
 
-        data = get_data_detail(info, record_type, function_request.internal_ids[start_idx:end_idx])
+        data = (
+            get_data_detail(
+                info, record_type, function_request.internal_ids[start_idx:end_idx]
+            )
+            if data_detail
+            else None
+        )
         return function_request, data
 
     variables = convert_values(kwargs)
@@ -325,7 +331,13 @@ def get_function_request(info, **kwargs):
             ignore_order=True,
         )
         if diff_data == {}:
-            data = get_data_detail(info, record_type, last_entity.internal_ids[start_idx:end_idx])
+            data = (
+                get_data_detail(
+                    info, record_type, last_entity.internal_ids[start_idx:end_idx]
+                )
+                if data_detail
+                else None
+            )
             return last_entity, data
 
     request_id = str(uuid.uuid1().int >> 64)
