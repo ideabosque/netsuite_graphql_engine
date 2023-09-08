@@ -31,5 +31,8 @@ class FunctionRequestType(ObjectType):
     data = List(JSON)
     internal_ids = List(String)
     log = String()
+    page_size = Int()
+    page_number = Int()
+    total_records = Int()
     created_at = DateTime()
     updated_at = DateTime()

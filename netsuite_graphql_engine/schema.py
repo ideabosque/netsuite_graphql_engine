@@ -64,6 +64,8 @@ class Query(ObjectType):
         cache_duration=Decimal(),
         data_detail=Boolean(),
         manual_dispatch=Boolean(),
+        page_size=Int(),
+        page_number=Int(),
     )
 
     def resolve_ping(self, info):

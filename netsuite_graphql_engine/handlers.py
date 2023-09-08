@@ -49,6 +49,8 @@ def funct_decorator(cache_duration=1):
                 kwargs.update({"cache_duration": cache_duration})
 
             try:
+                page_size = int(kwargs.get("page_size", 10))
+                page_number = int(kwargs.get("page_number", 1))
                 function_request, data = original_function(*args, **kwargs)
                 manual_dispatch = kwargs.get("manual_dispatch", False)
 
@@ -92,6 +94,9 @@ def funct_decorator(cache_duration=1):
                     "status": function_request.status,
                     "internal_ids": function_request.internal_ids,
                     "log": function_request.log,
+                    "page_size": page_size,
+                    "page_number": page_number,
+                    "total_records": len(function_request.internal_ids),
                     "created_at": function_request.created_at,
                     "updated_at": function_request.updated_at,
                 }
@@ -286,6 +291,10 @@ def get_function_request(info, **kwargs):
     request_id = kwargs.pop("request_id", None)
     function_name = kwargs.pop("function_name")
     cache_duration = float(kwargs.pop("cache_duration"))
+    page_size = int(kwargs.get("page_size", 10))
+    page_number = int(kwargs.get("page_number", 1))
+    start_idx = (page_number - 1) * page_size
+    end_idx = start_idx + page_size
 
     requested_fields = extract_requested_fields(info)
     data_detail = "data" in requested_fields
@@ -293,7 +302,7 @@ def get_function_request(info, **kwargs):
     if request_id:
         function_request = FunctionRequestModel.get(function_name, request_id)
 
-        data = get_data_detail(info, record_type, function_request.internal_ids)
+        data = get_data_detail(info, record_type, function_request.internal_ids[start_idx:end_idx])
         return function_request, data
 
     variables = convert_values(kwargs)
@@ -316,7 +325,7 @@ def get_function_request(info, **kwargs):
             ignore_order=True,
         )
         if diff_data == {}:
-            data = get_data_detail(info, record_type, last_entity.internal_ids)
+            data = get_data_detail(info, record_type, last_entity.internal_ids[start_idx:end_idx])
             return last_entity, data
 
     request_id = str(uuid.uuid1().int >> 64)
