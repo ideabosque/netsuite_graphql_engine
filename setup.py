@@ -7,7 +7,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="NetSuite-GraphQL-Engine",
-    version="0.0.1.beta",
+    version="0.0.1.beta.1",
     url="https://github.com/ideabosque/netsuite_graphql_engine",
     license="MIT",
     author="Idea Bosque",
@@ -25,7 +25,6 @@ setup(
         "boto3",
         "silvaengine_utility",
         "deepdiff",
-        "inspect",
     ],
     keywords=[
         "GraphQL",
