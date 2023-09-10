@@ -4,11 +4,21 @@ The **NetSuite GraphQL Engine** simplifies the interaction with the NetSuite Sui
 
 ### Key Features
 
-- Query and fetch data from NetSuite with intuitive GraphQL queries.
-- Create, update, or delete records in your NetSuite account using GraphQL mutations.
-- Handle authentication and error handling gracefully for a seamless development experience.
+Discover the powerful capabilities of the NetSuite GraphQL Engine Python module:
 
-This module is designed to enhance your NetSuite GraphQL experience by supporting asynchronous calls and caching using AWS DynamoDB through the PynamoDB library. By leveraging the [SuiteTalk Connector](https://github.com/ideabosque/suitetalk_connector) for API communication and PynamoDB for caching, you can combine the convenience of GraphQL with the efficiency of asynchronous calls and caching for optimal performance.
+- **Effortless Data Retrieval**: Easily query and retrieve data from your NetSuite account using user-friendly GraphQL queries, simplifying data access and extraction.
+
+- **Data Manipulation**: Seamlessly create, update, or delete records within your NetSuite account using GraphQL mutations, offering flexibility in managing your NetSuite data.
+
+- **Robust Error Handling**: Experience a smooth development process with robust error handling and graceful authentication mechanisms, ensuring your interactions with NetSuite are trouble-free.
+
+This module is meticulously designed to elevate your NetSuite GraphQL experience further. It facilitates:
+
+- **Asynchronous Execution**: Harness the power of asynchronous calls facilitated by AWS Lambda functions, optimizing performance and responsiveness in handling NetSuite data.
+
+- **Efficient Caching**: Leverage AWS DynamoDB in conjunction with the PynamoDB library for efficient caching, reducing latency and minimizing redundant data requests.
+
+By seamlessly integrating with the [SuiteTalk Connector](https://github.com/ideabosque/suitetalk_connector) for seamless API communication and employing PynamoDB for caching, you can unite the simplicity of GraphQL with the effectiveness of asynchronous operations and caching, delivering an exceptional performance-enhanced NetSuite experience.
 
 ## Installation
 
