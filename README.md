@@ -36,9 +36,9 @@ Configuring the NetSuite GraphQL Engine requires setting up specific files and e
 
 To enable efficient caching and data management, create the following AWS DynamoDB tables:
 
-1. **`nge-function-request`**: This table uses a partition key (`function_name`) and a sort key (`request_id`).
+1. **`nge-function_request`**: This table uses a partition key (`function_name`) and a sort key (`request_id`).
 
-2. **`nge-record-staging`**: Configure this table with a partition key (`record_type`) and a sort key (`internal_id`). Additionally, create a local secondary index named `updated_at-index` with a partition key (`record_type`) and a sort key (`updated_at`).
+2. **`nge-record_staging`**: Configure this table with a partition key (`record_type`) and a sort key (`internal_id`). Additionally, create a local secondary index named `updated_at-index` with a partition key (`record_type`) and a sort key (`updated_at`).
 
 ### .env File
 
@@ -93,6 +93,7 @@ import logging
 import os
 import sys
 import json
+import path
 from dotenv import load_dotenv
 from netsuite_graphql_engine import NetSuiteGraphQLEngine
 
@@ -141,3 +142,320 @@ This script demonstrates how to configure the NetSuite GraphQL Engine by loading
 
 By following this sample configuration, you can quickly set up the NetSuite GraphQL Engine for seamless interaction with your NetSuite data while referencing the [SuiteTalk Connector documentation](https://github.com/ideabosque/netsuite_connector) for configuration details.
 
+## Usage
+
+Utilizing the NetSuite GraphQL Engine is straightforward. Below, you'll find examples that illustrate how to construct GraphQL queries and mutations for seamless interaction with NetSuite data.
+
+### Loading the GraphQL Schema
+
+Begin by loading the GraphQL schema into a document parameter. This schema defines the structure of your queries and mutations.
+
+```graphql
+fragment SelectValueInfo on SelectValueType {
+    value
+    valueId
+}
+
+fragment FunctionRequestInfo on FunctionRequestType {
+    functionName
+    requestId
+    recordType
+    variables
+    status
+    data
+    internalIds
+    log
+    pageSize
+    pageNumber
+    totalRecords
+    createdAt
+    updatedAt
+}
+
+query ping {
+    ping
+}
+
+query getSelectValues(
+    $recordType: String!,
+    $field: String!,
+    $sublist: String    
+) {
+    selectValues(
+        recordType: $recordType,
+        field: $field,
+        sublist: $sublist
+    ) {
+        ...SelectValueInfo
+    }
+}
+
+# Additional queries and mutations...
+
+mutation insertUpdateRecord(
+    $recordType: String!,
+    $entity: JSON!,
+    $transactionRecordType: String,
+    $requestId: String
+) {
+    insertUpdateRecord(
+        recordType: $recordType,
+        entity: $entity,
+        transactionRecordType: $transactionRecordType,
+        requestId: $requestId
+    ) {
+        record {
+            ...FunctionRequestInfo
+        }
+    }
+}
+```
+
+This GraphQL schema provides you with the tools to construct queries and mutations to interact with your NetSuite data. Each query or mutation is named and can accept variables for customization.
+
+### Using the Payload for Querying or Mutating Data
+
+You can use the following payload structure to execute GraphQL queries or mutations programmatically:
+
+```python
+payload = {
+    "query": document,
+    "variables": variables,
+    "operation_name": "getSelectValues",
+}
+```
+
+Parameters:
+- `query`: The GraphQL query or mutation document you've loaded earlier.
+- `variables`: Any variables needed for your GraphQL query or mutation.
+- `operation_name`: The name of the operation to be executed, corresponding to a named query or mutation in your GraphQL schema.
+
+These parameters allow you to customize your GraphQL requests as needed, making your interactions with NetSuite data highly flexible.
+
+### Example: Querying 'select_values'
+
+Let's dive into an example of querying the `select_values` operation. This operation allows you to retrieve value/ID metrics for a specific field within a designated NetSuite record type, including the option to specify a sublist, such as 'itemList.'
+
+**Parameters:**
+- `recordType`: Specifies the NetSuite record type you intend to query.
+- `field`: Identifies the specific field within the chosen record type for which you want to obtain values.
+- `sublist`: Optionally, you can specify a sublist, such as 'itemList,' to narrow down your query further.
+
+```python
+    variables = {
+        "recordType": "salesOrder",
+        "field": "custcol_tc_ver",
+        "sublist": "itemList",
+    }
+    payload = {
+        "query": document,
+        "variables": variables,
+        "operation_name": "getSelectValues",
+    }
+    response = netsuite_graphql_engine.netsuite_graphql(**payload)
+    logger.info(response)
+```
+
+This example vividly illustrates how GraphQL empowers you to efficiently retrieve dropdown option values/IDs while offering exceptional flexibility for managing NetSuite data.
+
+### Example: Querying 'record'
+
+Let's explore querying with the `record` operation, which empowers you to fetch any NetSuite record using either its internal or external ID.
+
+**Parameters:**
+- `recordType`: Specifies the NetSuite record type you intend to query.
+- `id`: Identifies the record using either its internal or external ID.
+- `useExternalId`: Indicates whether the provided ID is an external ID.
+- `requestId`: Optionally, you can include an async request ID, which is used for asynchronous data retrieval.
+- `cacheDuration`: Specify the cache duration in hours. If set to 0, data retrieval bypasses the cache.
+
+```python
+variables = {
+    "recordType": "salesOrder",
+    "id": "123456",  # Replace with your desired internal or external ID.
+    "useExternalId": False,  # Set to 'True' if using an external ID.
+    "requestId": "async_request_123",  # Optional async request ID.
+    "cacheDuration": 2,  # Cache data for 2 hours (adjust as needed).
+}
+payload = {
+    "query": document,
+    "variables": variables,
+    "operation_name": "getRecord",
+}
+response = netsuite_graphql_engine.netsuite_graphql(**payload)
+logger.info(response)
+```
+
+You can also trigger the async function as follows:
+
+```python
+params = {
+    "request_id": "async_request_123",
+}
+netsuite_graphql_engine.netsuite_get_record_async(**params)
+```
+
+This example underscores the efficiency of querying NetSuite records, offering you the flexibility to choose between internal and external IDs, enable asynchronous data retrieval, and exercise cache control for precise data management.
+
+### Example: Querying 'recordByVariables'
+
+Now, let's delve into an example of querying the `recordByVariables` operation. This operation enables you to retrieve records based on specific criteria, including the field, value, and operator used for the query.
+
+**Parameters:**
+- `recordType`: Specifies the NetSuite record type you wish to query.
+- `field`: Identifies the field used in the record query.
+- `value`: Specifies the value to be matched in the query.
+- `operator`: Defines the operator to be used in the query (e.g., "is," "contains").
+- `requestId`: Optionally, you can include an async request ID, which is used for asynchronous data retrieval.
+- `cacheDuration`: Specify the cache duration in hours. If set to 0, data retrieval bypasses the cache.
+
+```python
+variables = {
+    "recordType": "salesOrder",
+    "field": "tranId",
+    "value": "SO-XXX-1234",
+    "operator": "is",
+    "cacheDuration": 0,  # Set to 0 to bypass caching.
+    "requestId": "async_request_123",  # Optional async request ID.
+}
+payload = {
+    "query": document,
+    "variables": variables,
+    "operation_name": "getRecordByVariables",
+}
+response = netsuite_graphql_engine.netsuite_graphql(**payload)
+logger.info(response)
+```
+
+You can also trigger the async function as follows:
+
+```python
+params = {
+    "request_id": "async_request_123",
+}
+netsuite_graphql_engine.netsuite_get_record_by_variables_async(**params)
+```
+
+This example vividly illustrates how to query NetSuite records based on specific criteria, offering you the flexibility to define the field, value, and operator for your query. Additionally, it provides control over caching and allows you to opt for asynchronous data retrieval, making it a powerful tool for tailored data access.
+
+### Example: Querying "records"
+
+This example demonstrates how to query records in NetSuite, starting from a specified cut date and extending to the end of the time period.
+
+**Parameters:**
+- `recordType`: Specifies the NetSuite record type you want to query.
+- `cutDate`: Identifies the cut-off date for the record retrieval. Records modified after this date will be included.
+- `hours`: Specifies the duration, in hours, from the cut date to retrieve records. Use 0 to include all records from the cut date onwards.
+- `manualDispatch`: Enables manual asynchronous dispatch for handling large datasets.
+- `requestId`: Optionally, you can include an async request ID, which is used for asynchronous data retrieval.
+- `cacheDuration`: Specify the cache duration in hours. If set to 0, data retrieval bypasses the cache.
+- `pageSize`: Determines the page size for pagination of the result set.
+- `pageNumber`: Specifies the page index for the result set when using pagination.
+
+```python
+variables = {
+    "recordType": "salesOrder",
+    "cutDate": "2023-07-24T16:32:24-08:00",
+    "hours": 0,
+    "cacheDuration": 0,
+    "manualDispatch": True,
+    "requestId": "async_request_123",
+    "pageSize": 10,
+    "pageNumber": 2,
+}
+payload = {
+    "query": document,
+    "variables": variables,
+    "operation_name": "getRecords",
+}
+response = netsuite_graphql_engine.netsuite_graphql(**payload)
+```
+
+You can also trigger the async function for handling this query as follows:
+
+```python
+params = {
+    "request_id": "async_request_123",
+}
+netsuite_graphql_engine.netsuite_get_records_async(**params)
+```
+
+This example showcases how to efficiently retrieve records from NetSuite by specifying a cut-off date, allowing for fine-grained control over data retrieval. It also supports pagination and asynchronous data retrieval for handling large datasets.
+
+### Example: Mutation 'insertUpdateRecord'
+
+This example illustrates how to use the 'insertUpdateRecord' mutation to either insert or update a record entity in NetSuite.
+
+**Parameters:**
+- `recordType`: Specifies the NetSuite record type you want to interact with.
+- `entity`: Represents the data to be inserted or updated in JSON format.
+- `transactionRecordType`: Optional. If the 'recordType' is 'task', this parameter is required to specify the associated transaction record type.
+- `requestId`: Optionally, you can include an async request ID, which is used for asynchronous data retrieval.
+
+```python
+## Insert/update a sales order.
+variables = {
+    "recordType": "salesOrder",
+    "entity": {
+        "billingAddress": {
+            "addr1": "123 Random St",
+            "attention": "John Doe",
+            "city": "Randomville",
+            "country": "_randomCountry",
+            "firstName": "John",
+            "lastName": "Doe",
+            "state": "Random State",
+            "zip": "12345",
+        },
+        "class": "Random Class",
+        "customFields": {
+            "custbody_credit_card_type": "Random Type",
+            "custbody_inside_delivery": False,
+            "custbody_lift_gate": False,
+            "custbody_delivery_type": "Random Delivery",
+            "custbody_fob_remarks": "Random Remarks",
+            "custbody_freight_terms": "Random Terms",
+            "custbody_order_type": "Random Order Type",
+        },
+        "email": "john.doe@random.com",
+        "entityStatus": "CUSTOMER-Closed Won",
+        "firstName": "John",
+        "items": [
+            {
+                "customFields": {},
+                "price": "19.99",
+                "qty": "2.0000",
+                "sku": "random-001",
+            }
+        ],
+        "lastName": "Doe",
+        "nsCustomerId": "987654",
+        "otherRefNum": "0987654321",
+        "paymentMethod": "Random Payment",
+        "shipDate": 30,
+        "shipMethod": "Random Ship Method",
+        "shippingAddress": {"attention": " ", "country": "_randomCountry"},
+        "source": "Random Source",
+        "subsidiary": "Random Subsidiary",
+    },
+    "requestId": "async_request_123",
+}
+payload = {
+    "query": document,
+    "variables": variables,
+    "operation_name": "insertUpdateRecord",
+}
+response = netsuite_graphql_engine.netsuite_graphql(**payload)
+logger.info(response)
+```
+
+You can also trigger the async function to handle this mutation as follows:
+
+```python
+params = {
+    "request_id": "async_request_123",
+}
+netsuite_graphql_engine.netsuite_insert_update_record_async(**params)
+```
+
+This example demonstrates how to insert or update records in NetSuite using GraphQL. It provides a detailed JSON representation of the entity to be inserted or updated, along with optional parameters such as the associated transaction record type and async request ID for asynchronous processing.

@@ -25,7 +25,7 @@ class BaseModel(Model):
 
 class FunctionRequestModel(BaseModel):
     class Meta(BaseModel.Meta):
-        table_name = "nge-function-request"
+        table_name = "nge-function_request"
 
     function_name = UnicodeAttribute(hash_key=True)
     request_id = UnicodeAttribute(range_key=True)
@@ -54,7 +54,7 @@ class RecordTypeUpdatedAtIndex(LocalSecondaryIndex):
 
 class RecordStagingModel(BaseModel):
     class Meta(BaseModel.Meta):
-        table_name = "nge-record-stagging"
+        table_name = "nge-record_stagging"
 
     record_type = UnicodeAttribute(hash_key=True)
     internal_id = UnicodeAttribute(range_key=True)
