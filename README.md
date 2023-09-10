@@ -190,7 +190,79 @@ query getSelectValues(
     }
 }
 
-# Additional queries and mutations...
+query getRecord(
+    $recordType: String!,
+    $id: String!,
+    $useExternalId: Boolean,
+    $requestId: String,
+    $cacheDuration: Decimal
+) {
+    record(
+        recordType: $recordType,
+        id: $id,
+        useExternalId: $useExternalId,
+        requestId: $requestId,
+        cacheDuration: $cacheDuration
+    ) {
+        ...FunctionRequestInfo
+    }
+}
+
+query getRecordByVariables(
+    $recordType: String!,
+    $field: String!,
+    $value: String!,
+    $operator: String,
+    $requestId: String,
+    $cacheDuration: Decimal
+) {
+    recordByVariables(
+        recordType: $recordType,
+        field: $field,
+        value: $value,
+        operator: $operator,
+        requestId: $requestId,
+        cacheDuration: $cacheDuration
+    ) {
+        ...FunctionRequestInfo
+    }
+}
+
+query getRecords(
+    $recordType: String!,
+    $cutDate: String,
+    $limit: Int,
+    $hours: Decimal,
+    $vendorId: String,
+    $subsidiary: String,
+    $itemDetail: Boolean,
+    $inventoryDetail: Boolean,
+    $internalIds: [String],
+    $requestId: String,
+    $cacheDuration: Decimal,
+    $manualDispatch: Boolean,
+    $pageSize: Int,
+    $pageNumber: Int
+) {
+    records(
+        recordType: $recordType,
+        cutDate: $cutDate,
+        limit: $limit,
+        hours: $hours,
+        vendorId: $vendorId,
+        subsidiary: $subsidiary,
+        itemDetail: $itemDetail,
+        inventoryDetail: $inventoryDetail,
+        internalIds: $internalIds,
+        requestId: $requestId,
+        cacheDuration: $cacheDuration,
+        manualDispatch: $manualDispatch,
+        pageSize: $pageSize,
+        pageNumber: $pageNumber
+    ) {
+        ...FunctionRequestInfo
+    }
+}
 
 mutation insertUpdateRecord(
     $recordType: String!,
@@ -204,7 +276,7 @@ mutation insertUpdateRecord(
         transactionRecordType: $transactionRecordType,
         requestId: $requestId
     ) {
-        record {
+        record{
             ...FunctionRequestInfo
         }
     }
