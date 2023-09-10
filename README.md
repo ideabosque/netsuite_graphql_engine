@@ -532,3 +532,45 @@ netsuite_graphql_engine.netsuite_insert_update_record_async(**params)
 ```
 
 This example demonstrates how to insert or update records in NetSuite using GraphQL. It provides a detailed JSON representation of the entity to be inserted or updated, along with optional parameters such as the associated transaction record type and async request ID for asynchronous processing.
+
+Certainly! Here are the "License" and "Support" sections for your README:
+
+## License
+
+The NetSuite GraphQL Engine is licensed under the MIT License.
+
+```
+MIT License
+
+Copyright (c) [Year] [Your Name]
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## Support
+
+For support and inquiries related to the NetSuite GraphQL Engine, please refer to the following resources:
+
+- **GitHub Repository**: [Link to GitHub Repository](https://github.com/ideabosque/netsuite_graphql_engine)
+- **Issues**: If you encounter any issues or have questions, please open an issue on the GitHub repository.
+- **Documentation**: Detailed documentation and usage instructions can be found in the repository's README and Wiki.
+
+We welcome your contributions and feedback to improve this module and make it even more valuable for the community.
+
+Feel free to adapt and modify these sections based on your specific requirements and the structure of your project.
