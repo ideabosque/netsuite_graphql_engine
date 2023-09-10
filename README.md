@@ -415,12 +415,17 @@ This example vividly illustrates how to query NetSuite records based on specific
 This example demonstrates how to query records in NetSuite, starting from a specified cut date and extending to the end of the time period.
 
 **Parameters:**
-- `recordType`: Specifies the NetSuite record type you want to query.
-- `cutDate`: Identifies the cut-off date for the record retrieval. Records modified after this date will be included.
-- `hours`: Specifies the duration, in hours, from the cut date to retrieve records. Use 0 to include all records from the cut date onwards.
-- `manualDispatch`: Enables manual asynchronous dispatch for handling large datasets.
-- `requestId`: Optionally, you can include an async request ID, which is used for asynchronous data retrieval.
-- `cacheDuration`: Specify the cache duration in hours. If set to 0, data retrieval bypasses the cache.
+- `recordType`: Specifies the NetSuite record type you intend to query.
+- `cutDate`: Defines the cut-off date for record retrieval. Records modified after this date will be included in the results.
+- `hours`: Specifies the time duration, in hours, from the cut date for retrieving records. Use 0 to include all records from the cut date onwards.
+- `vendorId`: (Optional) Specifies the vendor for data querying.
+- `subsidiary`: (Optional) Specifies the subsidiary for data querying.
+- `itemDetail`: (Optional) Specifies whether to request item detail (Boolean).
+- `inventoryDetail`: (Optional) Specifies whether to request inventory detail (Boolean).
+- `internalIds`: (Optional) Specifies internal IDs for querying records. If set, the cutDate parameter will not be used.
+- `requestId`: (Optional) You can include an async request ID, which is utilized for asynchronous data retrieval.
+- `cacheDuration`: Specifies the cache duration in hours. Setting it to 0 bypasses cache for data retrieval.
+- `manualDispatch`: Enables manual asynchronous dispatch, useful for handling large datasets.
 - `pageSize`: Determines the page size for pagination of the result set.
 - `pageNumber`: Specifies the page index for the result set when using pagination.
 
