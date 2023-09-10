@@ -54,10 +54,6 @@ Certainly! Here's the enhanced configuration section with the URL for the SuiteT
 Before setting up the NetSuite GraphQL Engine, ensure you have the `netsuitemappings_soap.json` file properly configured. Refer to the [SuiteTalk Connector documentation](https://github.com/ideabosque/netsuite_connector) for guidance on configuring this file to suit your specific NetSuite environment.
 
 
-Certainly! In a shorter version, the `"ASYNC_FUNCTIONS"` dictionary maps GraphQL resolver function names to their corresponding asynchronous counterparts. These mappings enable asynchronous execution of GraphQL queries and mutations for improved performance. Here's a simplified explanation:
-
----
-
 ### ASYNC_FUNCTIONS Mapping
 
 The `"ASYNC_FUNCTIONS"` mapping associates GraphQL resolver function names with their corresponding asynchronous functions. This enables non-blocking execution of GraphQL queries and mutations, enhancing the server's responsiveness.
