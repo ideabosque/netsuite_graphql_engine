@@ -80,6 +80,10 @@ For example:
 
 Each key represents a GraphQL resolver function, and the associated value is the name of the asynchronous function that handles potentially time-consuming tasks, such as interacting with the NetSuite API.
 
+### ASYNC_FUNCTION_NAME
+
+This specifies the AWS Lambda function responsible for executing asynchronous calls.
+
 ### Sample Configuration
 
 To help you get started quickly, here's a sample configuration script that sets up the NetSuite GraphQL Engine using environment variables and the `netsuitemappings_soap.json` file:
@@ -122,6 +126,7 @@ config_settings = {
         "resolve_records": "netsuite_get_records_async",
         "insert_update_record": "netsuite_insert_update_record_async",
     },
+    "ASYNC_FUNCTION_NAME": "silvaengine_agenttask",
 }
 
 # Configure logging

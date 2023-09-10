@@ -19,6 +19,7 @@ soap_connector = None
 rest_connector = None
 default_timezone = None
 aws_lambda = None
+async_function_name = None
 
 
 class FunctionError(Exception):
@@ -26,7 +27,7 @@ class FunctionError(Exception):
 
 
 def handlers_init(logger, **setting):
-    global soap_connector, rest_connector, default_timezone, aws_lambda
+    global soap_connector, rest_connector, default_timezone, aws_lambda, async_function_name
     soap_connector = SOAPConnector(logger, **setting)
     rest_connector = RESTConnector(logger, **setting)
     default_timezone = setting.get("TIMEZONE", "UTC")
@@ -36,6 +37,7 @@ def handlers_init(logger, **setting):
         aws_access_key_id=setting.get("aws_access_key_id"),
         aws_secret_access_key=setting.get("aws_secret_access_key"),
     )
+    async_function_name = setting.get("ASYNC_FUNCTION_NAME")
 
 
 def funct_decorator(cache_duration=1):
@@ -239,7 +241,7 @@ def dispatch_async_function(info, async_function, request_id):
         },
     }
     response = aws_lambda.invoke(
-        FunctionName="silvaengine_agenttask",
+        FunctionName=async_function_name,
         InvocationType="Event",
         Payload=Utility.json_dumps(payload),
     )
