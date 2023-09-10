@@ -253,7 +253,7 @@ Let's dive into an example of querying the `select_values` operation. This opera
         "operation_name": "getSelectValues",
     }
     response = netsuite_graphql_engine.netsuite_graphql(**payload)
-    logger.info(response)
+    print(json.loads(response)["data"]["selectValues"])
 ```
 
 This example vividly illustrates how GraphQL empowers you to efficiently retrieve dropdown option values/IDs while offering exceptional flexibility for managing NetSuite data.
@@ -283,7 +283,7 @@ payload = {
     "operation_name": "getRecord",
 }
 response = netsuite_graphql_engine.netsuite_graphql(**payload)
-logger.info(response)
+print(json.loads(response)["data"]["record"])
 ```
 
 You can also trigger the async function as follows:
@@ -324,7 +324,7 @@ payload = {
     "operation_name": "getRecordByVariables",
 }
 response = netsuite_graphql_engine.netsuite_graphql(**payload)
-logger.info(response)
+print(json.loads(response)["data"]["recordByVariables"])
 ```
 
 You can also trigger the async function as follows:
@@ -369,6 +369,7 @@ payload = {
     "operation_name": "getRecords",
 }
 response = netsuite_graphql_engine.netsuite_graphql(**payload)
+print(json.loads(response)["data"]["records"])
 ```
 
 You can also trigger the async function for handling this query as follows:
@@ -446,7 +447,7 @@ payload = {
     "operation_name": "insertUpdateRecord",
 }
 response = netsuite_graphql_engine.netsuite_graphql(**payload)
-logger.info(response)
+print(json.loads(response)["data"]["insertUpdateRecord"]["record"])
 ```
 
 You can also trigger the async function to handle this mutation as follows:
