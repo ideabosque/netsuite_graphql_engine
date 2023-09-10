@@ -25,7 +25,8 @@ By seamlessly integrating with the [SuiteTalk Connector](https://github.com/idea
 To easily install the NetSuite GraphQL Engine using pip and Git, execute the following command in your terminal:
 
 ```shell
-$ python -m pip install 'git+ssh://git@github.com/ideabosque/netsuite_graphql_engine.git@main#egg=netsuite_graphql_engine'
+$ python -m pip install git+ssh://git@github.com/ideabosque/silvaengine_utility.git@main#egg=silvaengine_utility
+$ python -m pip install NetSuite-GraphQL-Engine'
 ```
 
 ## Configuration
@@ -136,6 +137,12 @@ logger = logging.getLogger()
 
 # Initialize the NetSuite GraphQL Engine
 netsuite_graphql_engine = NetSuiteGraphQLEngine(logger, **config_settings)
+```
+
+Ensure that you have the required Python packages installed, including `dotenv`. You can install them using the following command:
+
+```shell
+$ python -m pip install dotenv
 ```
 
 This script demonstrates how to configure the NetSuite GraphQL Engine by loading environment variables and specifying various settings, including authentication details, API version, and caching options. Customize these settings according to your specific requirements and use case.
