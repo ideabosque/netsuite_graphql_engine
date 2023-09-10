@@ -61,7 +61,7 @@ Certainly! Here's the enhanced configuration section with the URL for the SuiteT
 
 ### Configuration Files
 
-Before setting up the NetSuite GraphQL Engine, ensure you have the `netsuitemappings_soap.json` file properly configured. Refer to the [SuiteTalk Connector documentation](https://github.com/ideabosque/netsuite_connector) for guidance on configuring this file to suit your specific NetSuite environment.
+Before setting up the NetSuite GraphQL Engine, ensure you have the `netsuitemappings_soap.json` file properly configured. Refer to the [SuiteTalk Connector documentation](https://github.com/ideabosque/suitetalk_connector) for guidance on configuring this file to suit your specific NetSuite environment.
 
 
 ### ASYNC_FUNCTIONS Mapping
@@ -140,7 +140,7 @@ netsuite_graphql_engine = NetSuiteGraphQLEngine(logger, **config_settings)
 
 This script demonstrates how to configure the NetSuite GraphQL Engine by loading environment variables and specifying various settings, including authentication details, API version, and caching options. Customize these settings according to your specific requirements and use case.
 
-By following this sample configuration, you can quickly set up the NetSuite GraphQL Engine for seamless interaction with your NetSuite data while referencing the [SuiteTalk Connector documentation](https://github.com/ideabosque/netsuite_connector) for configuration details.
+By following this sample configuration, you can quickly set up the NetSuite GraphQL Engine for seamless interaction with your NetSuite data while referencing the [SuiteTalk Connector documentation](https://github.com/ideabosque/suitetalk_connector) for configuration details.
 
 ## Usage
 
@@ -537,8 +537,6 @@ netsuite_graphql_engine.netsuite_insert_update_record_async(**params)
 ```
 
 This example demonstrates how to insert or update records in NetSuite using GraphQL. It provides a detailed JSON representation of the entity to be inserted or updated, along with optional parameters such as the associated transaction record type and async request ID for asynchronous processing.
-
-Certainly! Here are the "License" and "Support" sections for your README:
 
 ## License
 
