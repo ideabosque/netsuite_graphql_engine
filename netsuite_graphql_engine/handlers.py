@@ -21,6 +21,7 @@ rest_connector = None
 default_timezone = None
 aws_lambda = None
 async_function_name = None
+async_functions = {}
 txmap = {}
 
 
@@ -29,7 +30,7 @@ class FunctionError(Exception):
 
 
 def handlers_init(logger, **setting):
-    global soap_connector, rest_connector, default_timezone, aws_lambda, async_function_name, txmap
+    global soap_connector, rest_connector, default_timezone, aws_lambda, async_function_name, async_functions, txmap
     soap_connector = SOAPConnector(logger, **setting)
     rest_connector = RESTConnector(logger, **setting)
     default_timezone = setting.get("TIMEZONE", "UTC")
@@ -40,6 +41,7 @@ def handlers_init(logger, **setting):
         aws_secret_access_key=setting.get("aws_secret_access_key"),
     )
     async_function_name = setting.get("ASYNC_FUNCTION_NAME")
+    async_functions = setting.get("ASYNC_FUNCTIONS")
     txmap = setting.get("TXMAP")
 
 
@@ -61,9 +63,6 @@ def funct_decorator(cache_duration=1):
 
                 ## Dispatch the request to the lambda worker to get the data.
                 if function_request.status == "initial" and not manual_dispatch:
-                    assert (
-                        args[0].context.get("setting").get("ASYNC_FUNCTIONS")
-                    ), "The setting doesn't have ASYNC_FUNCTION."
                     function_request.update(
                         actions=[
                             FunctionRequestModel.status.set("in_progress"),
@@ -73,11 +72,10 @@ def funct_decorator(cache_duration=1):
                         ]
                     )
                     dispatch_async_function(
-                        args[0],
-                        args[0]
-                        .context["setting"]["ASYNC_FUNCTIONS"]
-                        .get(function_request.function_name),
+                        args[0].context.get("logger"),
+                        async_functions.get(function_request.function_name),
                         function_request.request_id,
+                        endpoint_id=args[0].context.get("endpoint_id"),
                     )
 
                 if function_request.status == "initial" and manual_dispatch:
@@ -154,8 +152,13 @@ def async_decorator(original_function):
             ## Since the async search is not finished, dispatch the function to check later.
             if result.get("job_id"):
                 log = f"Job ID {result['job_id']}: status ({result['status']}) at percent completed ({result['percent_completed']}) with estimated time to complete ({result['est_remaining_duration']})."
+                variables = dict(
+                    function_request.variables.__dict__["attribute_values"],
+                    **{"job_id": result.get("job_id")},
+                )
                 function_request.update(
                     actions=[
+                        FunctionRequestModel.variables.set(variables),
                         FunctionRequestModel.log.set(log),
                         FunctionRequestModel.updated_at.set(
                             datetime.now(tz=timezone("UTC"))
@@ -167,15 +170,13 @@ def async_decorator(original_function):
                     result["status"] == "processing"
                     and result["est_remaining_duration"] > 0
                 ):
-                    time.sleep(result["est_remaining_duration"])
-
+                    # time.sleep(result["est_remaining_duration"])
+                    time.sleep(30)
                 dispatch_async_function(
                     args[0],
-                    args[0]
-                    .context["setting"]["ASYNC_FUNCTIONS"]
-                    .get(function_request.function_name),
+                    async_functions.get(function_request.function_name),
                     function_request.request_id,
-                    job_id=result.get("job_id"),
+                    endpoint_id=kwargs.get("endpoint_id"),
                 )
                 return result
 
@@ -197,12 +198,10 @@ def async_decorator(original_function):
                 )
                 dispatch_async_function(
                     args[0],
-                    args[0]
-                    .context["setting"]["ASYNC_FUNCTIONS"]
-                    .get(function_request.function_name),
+                    async_functions.get(function_request.function_name),
                     function_request.request_id,
-                    job_id=result["search_id"],
                     total_pages=result["total_pages"],
+                    endpoint_id=kwargs.get("endpoint_id"),
                 )
                 return result
 
@@ -306,24 +305,24 @@ def convert_values(kwargs):
 
 
 # Define your asynchronous function here (async_function)
-async def async_function(info, async_function, request_id, job_id, page_index):
+async def async_function(logger, async_function, request_id, page_index):
     # Your asynchronous code here
-    params = {"request_id": str(request_id), "job_id": job_id, "page_index": page_index}
-    return eval(f"{async_function.replace('netsuite_', '')}_handler")(info, **params)
+    params = {"request_id": str(request_id), "page_index": page_index}
+    return eval(f"{async_function.replace('netsuite_', '')}_handler")(logger, **params)
 
 
 # Define a wrapper function for the asynchronous task
 async def dispatch_async_function_wrapper(
-    info, async_function, request_id, job_id, page_index
+    logger, async_function, request_id, page_index
 ):
-    await async_function(info, async_function, request_id, job_id, page_index)
+    await async_function(logger, async_function, request_id, page_index)
 
 
 def dispatch_async_function(
-    info, async_function, request_id, job_id=None, page_index=None, total_pages=None
+    logger, async_function, request_id, total_pages=None, endpoint_id=None
 ):
     ## Dispatch the sync tasks to collect the async result.
-    if job_id and total_pages:
+    if total_pages:
         # Create a list to store the tasks
         tasks = []
 
@@ -335,7 +334,7 @@ def dispatch_async_function(
                     executor.submit(
                         asyncio.run,
                         dispatch_async_function_wrapper(
-                            info, async_function, request_id, job_id, i
+                            logger, async_function, request_id, i
                         ),
                     )
                 )
@@ -362,17 +361,12 @@ def dispatch_async_function(
         )
 
     params = {"request_id": str(request_id)}
-    if job_id:
-        params.update({"job_id": job_id})
-    if page_index and total_pages:
-        params.update({"page_index": page_index})
-
-    if info.context.get("endpoint_id") is None:
-        eval(f"{async_function.replace('netsuite_', '')}_handler")(info, **params)
+    if endpoint_id is None:
+        eval(f"{async_function.replace('netsuite_', '')}_handler")(logger, **params)
         return
 
     payload = {
-        "endpoint_id": info.context.get("endpoint_id"),
+        "endpoint_id": endpoint_id,
         "funct": async_function,
         "params": params,
     }
@@ -524,7 +518,7 @@ def resolve_select_values_handler(info, **kwargs):
     ]
 
 
-def insert_update_record_staging(info, record_type, record):
+def insert_update_record_staging(logger, record_type, record):
     try:
         count = RecordStagingModel.count(
             record_type,
@@ -550,14 +544,14 @@ def insert_update_record_staging(info, record_type, record):
             )
     except:
         log = traceback.format_exc()
-        info.context.get("logger").exception(log)
-        info.context.get("logger").info(Utility.json_dumps(object_to_dict(record)))
+        logger.exception(log)
+        logger.info(Utility.json_dumps(object_to_dict(record)))
         raise
 
 
 @monitor_decorator
 @async_decorator
-def get_record_async_handler(info, **kwargs):
+def get_record_async_handler(logger, **kwargs):
     function_request = kwargs.get("function_request")
     record = soap_connector.get_record(
         function_request.record_type,
@@ -566,7 +560,7 @@ def get_record_async_handler(info, **kwargs):
             "use_external_id", False
         ),
     )
-    insert_update_record_staging(info, function_request.record_type, record)
+    insert_update_record_staging(logger, function_request.record_type, record)
 
     return [record.internalId]
 
@@ -578,7 +572,7 @@ def resolve_record_handler(info, **kwargs):
 
 @monitor_decorator
 @async_decorator
-def get_record_by_variables_async_handler(info, **kwargs):
+def get_record_by_variables_async_handler(logger, **kwargs):
     function_request = kwargs.get("function_request")
     variables = {
         function_request.variables["field"]: function_request.variables["value"],
@@ -589,7 +583,7 @@ def get_record_by_variables_async_handler(info, **kwargs):
         function_request.record_type, **variables
     )
     if record is not None:
-        insert_update_record_staging(info, function_request.record_type, record)
+        insert_update_record_staging(logger, function_request.record_type, record)
 
         return [record.internalId]
     return []
@@ -602,24 +596,26 @@ def resolve_record_by_variables_handler(info, **kwargs):
 
 @monitor_decorator
 @async_decorator
-def get_records_async_handler(info, **kwargs):
+def get_records_async_handler(logger, **kwargs):
     function_request = kwargs.get("function_request")
+    variables = copy.deepcopy(function_request.variables.__dict__["attribute_values"])
 
     ## If job_id and page_index are provided, then return the async result.
-    if kwargs.get("job_id") and kwargs.get("page_index"):
-        return get_records_async_result(info, function_request.record_type, **kwargs)
+    if variables.get("job_id") and kwargs.get("page_index"):
+        kwargs.update({"job_id": variables.get("job_id")})
+        return get_records_async_result(logger, function_request.record_type, **kwargs)
 
     ## If job_id is provided only, then check the status of the async job.
-    if kwargs.get("job_id"):
-        result = soap_connector.check_async_status(kwargs.get("job_id"))
+    if variables.get("job_id"):
+        result = soap_connector.check_async_status(variables.get("job_id"))
         if result["status"] != "finished":
-            info.context.get("logger").info(
+            logger.info(
                 f"Job ID {result['job_id']}: status ({result['status']}) at percent completed ({result['percent_completed']}) with estimated time to complete ({result['est_remaining_duration']})."
             )
             return result
-        return get_records_async_result(info, function_request.record_type, **kwargs)
+        kwargs.update({"job_id": variables.get("job_id")})
+        return get_records_async_result(logger, function_request.record_type, **kwargs)
 
-    variables = copy.deepcopy(function_request.variables.__dict__["attribute_values"])
     record_type = function_request.record_type
 
     hours = variables.get("hours", 0.0)
@@ -646,7 +642,7 @@ def get_records_async_handler(info, **kwargs):
         return result
     elif record_type in ["inventoryLot"]:
         result = soap_connector.get_item_result(record_type, **variables)
-        info.context.get("logger").info(
+        logger.info(
             f"Job ID {result['job_id']}: status ({result['status']}) at percent completed ({result['percent_completed']}) with estimated time to complete ({result['est_remaining_duration']})."
         )
         return result
@@ -654,11 +650,11 @@ def get_records_async_handler(info, **kwargs):
         raise Exception(f"Unsupported record type ({record_type}).")
 
 
-def get_records_async_result(info, record_type, **kwargs):
+def get_records_async_result(logger, record_type, **kwargs):
     result = soap_connector.get_async_result(
         kwargs.get("job_id"), kwargs.get("page_index", 1)
     )
-    info.context.get("logger").info(
+    logger.info(
         f"Total_records/Total_pages {result['total_records']}/{result['total_pages']}: {len(result['records'])} records at page {result['page_index']}."
     )
 
@@ -677,7 +673,7 @@ def get_records_async_result(info, record_type, **kwargs):
 
     internal_ids = []
     for record in records:
-        insert_update_record_staging(info, record_type, record)
+        insert_update_record_staging(logger, record_type, record)
         internal_ids.append(record.internalId)
 
     if result["total_pages"] == 1:
@@ -699,7 +695,7 @@ def resolve_records_handler(info, **kwargs):
 
 @monitor_decorator
 @async_decorator
-def insert_update_record_async_handler(info, **kwargs):
+def insert_update_record_async_handler(logger, **kwargs):
     function_request = kwargs.get("function_request")
     variables = copy.deepcopy(function_request.variables.__dict__["attribute_values"])
     record_type = function_request.record_type
@@ -737,7 +733,7 @@ def insert_update_record_async_handler(info, **kwargs):
     else:
         raise Exception(f"Unsupported record type ({record_type}).")
 
-    insert_update_record_staging(info, record_type, record)
+    insert_update_record_staging(logger, record_type, record)
 
     return [record.internalId]
 
