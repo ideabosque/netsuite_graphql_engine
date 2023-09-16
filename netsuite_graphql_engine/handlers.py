@@ -4,7 +4,8 @@ from __future__ import print_function
 
 __author__ = "bibow"
 
-import functools, inspect, uuid, boto3, traceback, copy, time
+import functools, inspect, uuid, boto3, traceback, copy, time, asyncio
+import concurrent.futures
 from datetime import datetime, timedelta
 from deepdiff import DeepDiff
 from decimal import Decimal
@@ -78,6 +79,7 @@ def funct_decorator(cache_duration=1):
                         .get(function_request.function_name),
                         function_request.request_id,
                     )
+
                 if function_request.status == "initial" and manual_dispatch:
                     function_request.update(
                         actions=[
@@ -124,46 +126,16 @@ def async_decorator(original_function):
         function_name = original_function.__name__.replace(
             "_async_handler", ""
         ).replace("get", "resolve")
-        function_request = FunctionRequestModel.get(
-            function_name, kwargs.get("request_id")
-        )
-        kwargs.update({"function_request": function_request})
+
         try:
+            function_request = FunctionRequestModel.get(
+                function_name, kwargs.get("request_id")
+            )
+
+            kwargs.update({"function_request": function_request})
             result = original_function(*args, **kwargs)
-            if isinstance(result, dict):
-                ## Update variabales and internal_ids.
-                variables = dict(
-                    function_request.variables.__dict__["attribute_values"],
-                    **{
-                        "search_id": result["search_id"],
-                        "total_records": result["total_records"],
-                        "total_pages": result["total_pages"],
-                        "page_index": result["page_index"] + 1,
-                    },
-                )
 
-                internal_ids = set(
-                    function_request.internal_ids + result["internal_ids"]
-                )
-                function_request.update(
-                    actions=[
-                        FunctionRequestModel.variables.set(variables),
-                        FunctionRequestModel.internal_ids.set(internal_ids),
-                        FunctionRequestModel.log.set(None),
-                        FunctionRequestModel.updated_at.set(
-                            datetime.now(tz=timezone("UTC"))
-                        ),
-                    ]
-                )
-
-                dispatch_async_function(
-                    args[0],
-                    args[0]
-                    .context["setting"]["ASYNC_FUNCTIONS"]
-                    .get(function_request.function_name),
-                    function_request.request_id,
-                )
-            else:
+            if isinstance(result, list):
                 internal_ids = set(function_request.internal_ids + result)
                 function_request.update(
                     actions=[
@@ -175,6 +147,67 @@ def async_decorator(original_function):
                         ),
                     ]
                 )
+                return result
+
+            assert isinstance(result, dict), "The result must be a dict instance."
+
+            ## Since the async search is not finished, dispatch the function to check later.
+            if result.get("job_id"):
+                log = f"Job ID {result['job_id']}: status ({result['status']}) at percent completed ({result['percent_completed']}) with estimated time to complete ({result['est_remaining_duration']})."
+                function_request.update(
+                    actions=[
+                        FunctionRequestModel.log.set(log),
+                        FunctionRequestModel.updated_at.set(
+                            datetime.now(tz=timezone("UTC"))
+                        ),
+                    ]
+                )
+
+                if (
+                    result["status"] == "processing"
+                    and result["est_remaining_duration"] > 0
+                ):
+                    time.sleep(result["est_remaining_duration"])
+
+                dispatch_async_function(
+                    args[0],
+                    args[0]
+                    .context["setting"]["ASYNC_FUNCTIONS"]
+                    .get(function_request.function_name),
+                    function_request.request_id,
+                    job_id=result.get("job_id"),
+                )
+                return result
+
+            ## Process the async search result.
+            assert result.get("search_id") and result.get(
+                "page_index"
+            ), "The search_id and page_index are required."
+
+            if result["page_index"] == 1:
+                log = f"Total_records/Total_pages {result['total_records']}/{result['total_pages']}: {len(result['records'])} records at page {result['page_index']}."
+                function_request.update(
+                    actions=[
+                        FunctionRequestModel.internal_ids.set(result["records"]),
+                        FunctionRequestModel.log.set(log),
+                        FunctionRequestModel.updated_at.set(
+                            datetime.now(tz=timezone("UTC"))
+                        ),
+                    ]
+                )
+                dispatch_async_function(
+                    args[0],
+                    args[0]
+                    .context["setting"]["ASYNC_FUNCTIONS"]
+                    .get(function_request.function_name),
+                    function_request.request_id,
+                    job_id=result["search_id"],
+                    total_pages=result["total_pages"],
+                )
+                return result
+
+            return dict(result, **{"request_name": function_request.function_name})
+
         except:
             log = traceback.format_exc()
             args[0].context.get("logger").exception(log)
@@ -188,7 +221,6 @@ def async_decorator(original_function):
                 ]
             )
             raise
-        return result
 
     return wrapper_function
 
@@ -273,19 +305,76 @@ def convert_values(kwargs):
     return convert_dict(kwargs)
 
 
-def dispatch_async_function(info, async_function, request_id):
-    if info.context.get("endpoint_id") is None:
-        eval(f"{async_function.replace('netsuite_', '')}_handler")(
-            info, **{"request_id": request_id}
+# Define your asynchronous function here (async_function)
+async def async_function(info, async_function, request_id, job_id, page_index):
+    # Your asynchronous code here
+    params = {"request_id": str(request_id), "job_id": job_id, "page_index": page_index}
+    return eval(f"{async_function.replace('netsuite_', '')}_handler")(info, **params)
+
+
+# Define a wrapper function for the asynchronous task
+async def dispatch_async_function_wrapper(
+    info, async_function, request_id, job_id, page_index
+):
+    await async_function(info, async_function, request_id, job_id, page_index)
+
+
+def dispatch_async_function(
+    info, async_function, request_id, job_id=None, page_index=None, total_pages=None
+):
+    ## Dispatch the sync tasks to collect the async result.
+    if job_id and total_pages:
+        # Create a list to store the tasks
+        tasks = []
+
+        # Create a multiprocessing Pool
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            # Dispatch asynchronous tasks to different processes for each page index
+            for i in range(2, total_pages + 1):
+                tasks.append(
+                    executor.submit(
+                        asyncio.run,
+                        dispatch_async_function_wrapper(
+                            info, async_function, request_id, job_id, i
+                        ),
+                    )
+                )
+
+        # Gather the tasks from the processes
+        gathered_results = [task.result() for task in tasks]
+        function_request = FunctionRequestModel.get(
+            gathered_results[0]["function_name"], request_id
         )
+
+        internal_id_list = [entry["internal_ids"] for entry in gathered_results]
+        internal_ids = set(
+            function_request.internal_ids
+            + [internal_id for sublist in internal_id_list for internal_id in sublist]
+        )
+
+        function_request.update(
+            actions=[
+                FunctionRequestModel.internal_ids.set(internal_ids),
+                FunctionRequestModel.status.set("success"),
+                FunctionRequestModel.log.set(None),
+                FunctionRequestModel.updated_at.set(datetime.now(tz=timezone("UTC"))),
+            ]
+        )
+
+    params = {"request_id": str(request_id)}
+    if job_id:
+        params.update({"job_id": job_id})
+    if page_index and total_pages:
+        params.update({"page_index": page_index})
+
+    if info.context.get("endpoint_id") is None:
+        eval(f"{async_function.replace('netsuite_', '')}_handler")(info, **params)
         return
 
     payload = {
         "endpoint_id": info.context.get("endpoint_id"),
         "funct": async_function,
-        "params": {
-            "request_id": str(request_id),
-        },
+        "params": params,
     }
     response = aws_lambda.invoke(
         FunctionName=async_function_name,
@@ -515,6 +604,21 @@ def resolve_record_by_variables_handler(info, **kwargs):
 @async_decorator
 def get_records_async_handler(info, **kwargs):
     function_request = kwargs.get("function_request")
+
+    ## If job_id and page_index are provided, then return the async result.
+    if kwargs.get("job_id") and kwargs.get("page_index"):
+        return get_records_async_result(info, function_request.record_type, **kwargs)
+
+    ## If job_id is provided only, then check the status of the async job.
+    if kwargs.get("job_id"):
+        result = soap_connector.check_async_status(kwargs.get("job_id"))
+        if result["status"] != "finished":
+            info.context.get("logger").info(
+                f"Job ID {result['job_id']}: status ({result['status']}) at percent completed ({result['percent_completed']}) with estimated time to complete ({result['est_remaining_duration']})."
+            )
+            return result
+        return get_records_async_result(info, function_request.record_type, **kwargs)
+
     variables = copy.deepcopy(function_request.variables.__dict__["attribute_values"])
     record_type = function_request.record_type
 
@@ -530,41 +634,53 @@ def get_records_async_handler(info, **kwargs):
         **{
             "cut_date": cut_date.strftime(datetime_format),
             "end_date": end_date.strftime(datetime_format),
-            "limit": 1000,
+            "async": True,
         },
     )
 
     if record_type in ["salesOrder", "purchaseOrder"]:
         result = soap_connector.get_transaction_result(record_type, **variables)
         info.context.get("logger").info(
-            f"Total_records/Total_pages {result['total_records']}/{result['total_pages']}: {len(result['records'])} records at page {result['page_index']}."
+            f"Job ID {result['job_id']}: status ({result['status']}) at percent completed ({result['percent_completed']}) with estimated time to complete ({result['est_remaining_duration']})."
         )
-
-        if result["page_index"] is None:
-            return []
-
-        records = soap_connector.get_transactions(
-            record_type, result["records"], **variables
-        )
+        return result
     elif record_type in ["inventoryLot"]:
         result = soap_connector.get_item_result(record_type, **variables)
         info.context.get("logger").info(
-            f"Total_records/Total_pages {result['total_records']}/{result['total_pages']}: {len(result['records'])} records at page {result['page_index']}."
+            f"Job ID {result['job_id']}: status ({result['status']}) at percent completed ({result['percent_completed']}) with estimated time to complete ({result['est_remaining_duration']})."
         )
+        return result
+    else:
+        raise Exception(f"Unsupported record type ({record_type}).")
 
-        if result["page_index"] is None:
-            return []
 
-        records = soap_connector.get_items(record_type, result["records"], **variables)
+def get_records_async_result(info, record_type, **kwargs):
+    result = soap_connector.get_async_result(
+        kwargs.get("job_id"), kwargs.get("page_index", 1)
+    )
+    info.context.get("logger").info(
+        f"Total_records/Total_pages {result['total_records']}/{result['total_pages']}: {len(result['records'])} records at page {result['page_index']}."
+    )
+
+    if result["total_records"] == 0:
+        return []
+
+    kwargs.update({"limit": 1000})
+    if record_type in ["salesOrder", "purchaseOrder"]:
+        records = soap_connector.get_transactions(
+            record_type, result["records"], **kwargs
+        )
+    elif record_type in ["inventoryLot"]:
+        records = soap_connector.get_items(record_type, result["records"], **kwargs)
     else:
         raise Exception(f"Unsupported record type ({record_type}).")
 
     internal_ids = []
     for record in records:
-        insert_update_record_staging(info, function_request.record_type, record)
+        insert_update_record_staging(info, record_type, record)
         internal_ids.append(record.internalId)
 
-    if result["page_index"] == result["total_pages"]:
+    if result["total_pages"] == 1:
         return internal_ids
 
     return {
