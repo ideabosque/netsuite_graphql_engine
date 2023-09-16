@@ -186,10 +186,10 @@ def async_decorator(original_function):
             ), "The search_id and page_index are required."
 
             if result["page_index"] == 1:
-                log = f"Total_records/Total_pages {result['total_records']}/{result['total_pages']}: {len(result['records'])} records at page {result['page_index']}."
+                log = f"Total_records/Total_pages {result['total_records']}/{result['total_pages']}: {len(result['internal_ids'])} records at page {result['page_index']}."
                 function_request.update(
                     actions=[
-                        FunctionRequestModel.internal_ids.set(result["records"]),
+                        FunctionRequestModel.internal_ids.set(result["internal_ids"]),
                         FunctionRequestModel.log.set(log),
                         FunctionRequestModel.updated_at.set(
                             datetime.now(tz=timezone("UTC"))
@@ -209,7 +209,7 @@ def async_decorator(original_function):
 
         except:
             log = traceback.format_exc()
-            args[0].context.get("logger").exception(log)
+            args[0].exception(log)
             function_request.update(
                 actions=[
                     FunctionRequestModel.status.set("failed"),
@@ -661,7 +661,7 @@ def get_records_async_result(logger, record_type, **kwargs):
     if result["total_records"] == 0:
         return []
 
-    kwargs.update({"limit": 1000})
+    kwargs.update({"limit": 10})
     if record_type in ["salesOrder", "purchaseOrder"]:
         records = soap_connector.get_transactions(
             record_type, result["records"], **kwargs
