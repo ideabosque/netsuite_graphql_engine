@@ -537,6 +537,9 @@ def resolve_select_values_handler(info, **kwargs):
 
 def insert_update_record_staging(logger, record_type, record):
     try:
+        logger.info(
+            f"Insert or update {record_type} for {record.internalId} in staging"
+        )
         count = RecordStagingModel.count(
             record_type,
             RecordStagingModel.internal_id == record.internalId,
