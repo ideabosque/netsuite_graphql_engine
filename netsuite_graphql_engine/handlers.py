@@ -81,7 +81,7 @@ def funct_decorator(cache_duration=1):
                 if function_request.status == "initial" and manual_dispatch:
                     function_request.update(
                         actions=[
-                            FunctionRequestModel.status.set("manual_dispatch"),
+                            FunctionRequestModel.status.set("fetch_later"),
                             FunctionRequestModel.updated_at.set(
                                 datetime.now(tz=timezone("UTC"))
                             ),
@@ -157,14 +157,14 @@ def async_decorator(original_function):
                     **{"job_id": result.get("job_id")},
                 )
 
-                fetch_later = False
+                fetch_now = False
                 if (
                     result["status"] == "processing"
-                    and result["est_remaining_duration"] > 120
+                    and result["est_remaining_duration"] <= 120
                 ):
-                    fetch_later = True
+                    fetch_now = True
 
-                if not fetch_later:
+                if fetch_now:
                     function_request.update(
                         actions=[
                             FunctionRequestModel.variables.set(variables),
@@ -187,7 +187,7 @@ def async_decorator(original_function):
                     )
 
                 ## If est_remaining_duration <= 120, the process will sleep with est_remaining_duration and dispatch the next step.
-                if not fetch_later:
+                if fetch_now:
                     time.sleep(result["est_remaining_duration"])
                     dispatch_async_function(
                         args[0],
@@ -619,19 +619,29 @@ def get_records_async_handler(logger, **kwargs):
 
     ## If job_id and page_index are provided, then return the async result.
     if variables.get("job_id") and kwargs.get("page_index"):
-        kwargs.update({"job_id": variables.get("job_id")})
-        return get_records_async_result(logger, function_request.record_type, **kwargs)
+        return get_records_async_result(
+            logger,
+            function_request.record_type,
+            **dict(variables, **{"page_index": kwargs.get("page_index")}),
+        )
 
     ## If job_id is provided only, then check the status of the async job.
     if variables.get("job_id"):
         result = soap_connector.check_async_status(variables.get("job_id"))
-        if result["status"] != "finished":
-            logger.info(
-                f"Job ID {result['job_id']}: status ({result['status']}) at percent completed ({result['percent_completed']}) with estimated time to complete ({result['est_remaining_duration']})."
+
+        if result["status"] == "pending":
+            time.sleep(30)
+            result = soap_connector.check_async_status(variables.get("job_id"))
+
+        if result["status"] == "finished":
+            return get_records_async_result(
+                logger, function_request.record_type, **variables
             )
-            return result
-        kwargs.update({"job_id": variables.get("job_id")})
-        return get_records_async_result(logger, function_request.record_type, **kwargs)
+
+        logger.info(
+            f"Job ID {result['job_id']}: status ({result['status']}) at percent completed ({result['percent_completed']}) with estimated time to complete ({result['est_remaining_duration']})."
+        )
+        return result
 
     record_type = function_request.record_type
 
@@ -678,7 +688,7 @@ def get_records_async_result(logger, record_type, **kwargs):
     if result["total_records"] == 0:
         return []
 
-    kwargs.update({"limit": 1})
+    # kwargs.update({"limit": 1})
     if record_type in ["salesOrder", "purchaseOrder"]:
         records = soap_connector.get_transactions(
             record_type, result["records"], **kwargs
