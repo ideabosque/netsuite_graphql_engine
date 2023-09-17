@@ -156,28 +156,45 @@ def async_decorator(original_function):
                     function_request.variables.__dict__["attribute_values"],
                     **{"job_id": result.get("job_id")},
                 )
-                function_request.update(
-                    actions=[
-                        FunctionRequestModel.variables.set(variables),
-                        FunctionRequestModel.log.set(log),
-                        FunctionRequestModel.updated_at.set(
-                            datetime.now(tz=timezone("UTC"))
-                        ),
-                    ]
-                )
 
+                fetch_later = False
                 if (
                     result["status"] == "processing"
-                    and result["est_remaining_duration"] > 0
+                    and result["est_remaining_duration"] > 120
                 ):
-                    # time.sleep(result["est_remaining_duration"])
-                    time.sleep(30)
-                dispatch_async_function(
-                    args[0],
-                    async_functions.get(function_request.function_name),
-                    function_request.request_id,
-                    endpoint_id=kwargs.get("endpoint_id"),
-                )
+                    fetch_later = True
+
+                if not fetch_later:
+                    function_request.update(
+                        actions=[
+                            FunctionRequestModel.variables.set(variables),
+                            FunctionRequestModel.log.set(log),
+                            FunctionRequestModel.updated_at.set(
+                                datetime.now(tz=timezone("UTC"))
+                            ),
+                        ]
+                    )
+                else:
+                    function_request.update(
+                        actions=[
+                            FunctionRequestModel.variables.set(variables),
+                            FunctionRequestModel.status.set("fetch_later"),
+                            FunctionRequestModel.log.set(log),
+                            FunctionRequestModel.updated_at.set(
+                                datetime.now(tz=timezone("UTC"))
+                            ),
+                        ]
+                    )
+
+                ## If est_remaining_duration <= 120, the process will sleep with est_remaining_duration and dispatch the next step.
+                if not fetch_later:
+                    time.sleep(result["est_remaining_duration"])
+                    dispatch_async_function(
+                        args[0],
+                        async_functions.get(function_request.function_name),
+                        function_request.request_id,
+                        endpoint_id=kwargs.get("endpoint_id"),
+                    )
                 return result
 
             ## Process the async search result.
@@ -205,7 +222,7 @@ def async_decorator(original_function):
                 )
                 return result
 
-            return dict(result, **{"request_name": function_request.function_name})
+            return dict(result, **{"function_name": function_request.function_name})
 
         except:
             log = traceback.format_exc()
@@ -304,18 +321,17 @@ def convert_values(kwargs):
     return convert_dict(kwargs)
 
 
-# Define your asynchronous function here (async_function)
-async def async_function(logger, async_function, request_id, page_index):
+# Define your asynchronous function here (async_worker)
+async def async_worker(logger, async_function, request_id, page_index):
     # Your asynchronous code here
     params = {"request_id": str(request_id), "page_index": page_index}
     return eval(f"{async_function.replace('netsuite_', '')}_handler")(logger, **params)
 
 
-# Define a wrapper function for the asynchronous task
-async def dispatch_async_function_wrapper(
-    logger, async_function, request_id, page_index
-):
-    await async_function(logger, async_function, request_id, page_index)
+# Define a wrapper worker for the asynchronous task
+async def dispatch_async_worker_wrapper(logger, async_function, request_id, page_index):
+    result = await async_worker(logger, async_function, request_id, page_index)
+    return result
 
 
 def dispatch_async_function(
@@ -327,19 +343,19 @@ def dispatch_async_function(
         tasks = []
 
         # Create a multiprocessing Pool
-        with concurrent.futures.ProcessPoolExecutor() as executor:
+        with concurrent.futures.ThreadPoolExecutor() as executor:
             # Dispatch asynchronous tasks to different processes for each page index
             for i in range(2, total_pages + 1):
                 tasks.append(
                     executor.submit(
                         asyncio.run,
-                        dispatch_async_function_wrapper(
+                        dispatch_async_worker_wrapper(
                             logger, async_function, request_id, i
                         ),
                     )
                 )
 
-        # Gather the tasks from the processes
+        # Gather the tasks' results from the processes
         gathered_results = [task.result() for task in tasks]
         function_request = FunctionRequestModel.get(
             gathered_results[0]["function_name"], request_id
@@ -359,6 +375,7 @@ def dispatch_async_function(
                 FunctionRequestModel.updated_at.set(datetime.now(tz=timezone("UTC"))),
             ]
         )
+        return
 
     params = {"request_id": str(request_id)}
     if endpoint_id is None:
@@ -636,7 +653,7 @@ def get_records_async_handler(logger, **kwargs):
 
     if record_type in ["salesOrder", "purchaseOrder"]:
         result = soap_connector.get_transaction_result(record_type, **variables)
-        info.context.get("logger").info(
+        logger.info(
             f"Job ID {result['job_id']}: status ({result['status']}) at percent completed ({result['percent_completed']}) with estimated time to complete ({result['est_remaining_duration']})."
         )
         return result
@@ -661,7 +678,7 @@ def get_records_async_result(logger, record_type, **kwargs):
     if result["total_records"] == 0:
         return []
 
-    kwargs.update({"limit": 10})
+    kwargs.update({"limit": 1})
     if record_type in ["salesOrder", "purchaseOrder"]:
         records = soap_connector.get_transactions(
             record_type, result["records"], **kwargs
