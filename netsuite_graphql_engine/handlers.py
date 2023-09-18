@@ -537,9 +537,6 @@ def resolve_select_values_handler(info, **kwargs):
 
 def insert_update_record_staging(logger, record_type, record):
     try:
-        logger.info(
-            f"Insert or update {record_type} for {record.internalId} in staging"
-        )
         count = RecordStagingModel.count(
             record_type,
             RecordStagingModel.internal_id == record.internalId,
@@ -701,10 +698,20 @@ def get_records_async_result(logger, record_type, **kwargs):
     else:
         raise Exception(f"Unsupported record type ({record_type}).")
 
+    logger.info(
+        f"Sart insert or update {record_type} with {len(records)} records in staging at {time.strftime('%X')}."
+    )
     internal_ids = []
-    for record in records:
+    for idx, record in enumerate(records):
+        if (idx + 1) % 25 == 0:
+            logger.info(
+                f"Processing insert or update {record_type} with {(idx+1)/len(records) * 100} % completed in staging at {time.strftime('%X')}."
+            )
         insert_update_record_staging(logger, record_type, record)
         internal_ids.append(record.internalId)
+    logger.info(
+        f"End insert or update {record_type} with {len(records)} records in staging at {time.strftime('%X')}."
+    )
 
     if result["total_pages"] == 1:
         return internal_ids
