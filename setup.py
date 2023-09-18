@@ -7,7 +7,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="NetSuite-GraphQL-Engine",
-    version="0.0.2.beta.1",
+    version="0.0.2",
     url="https://github.com/ideabosque/netsuite_graphql_engine",
     license="MIT",
     author="Idea Bosque",
