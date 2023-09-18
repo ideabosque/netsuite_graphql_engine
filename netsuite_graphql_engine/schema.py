@@ -53,7 +53,6 @@ class Query(ObjectType):
         FunctionRequestType,
         record_type=String(required=True),
         cut_date=String(),
-        limit=Int(),
         hours=Decimal(),
         vendor_id=String(),
         subsidiary=String(),
@@ -64,8 +63,8 @@ class Query(ObjectType):
         cache_duration=Decimal(),
         data_detail=Boolean(),
         manual_dispatch=Boolean(),
-        page_size=Int(),
-        page_number=Int(),
+        request_page_size=Int(),
+        request_page_number=Int(),
     )
 
     def resolve_ping(self, info):

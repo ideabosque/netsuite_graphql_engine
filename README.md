@@ -172,7 +172,7 @@ fragment FunctionRequestInfo on FunctionRequestType {
     data
     internalIds
     log
-    pageSize
+    requestPageSize
     pageNumber
     totalRecords
     createdAt
@@ -248,7 +248,7 @@ query getRecords(
     $requestId: String,
     $cacheDuration: Decimal,
     $manualDispatch: Boolean,
-    $pageSize: Int,
+    $requestPageSize: Int,
     $pageNumber: Int
 ) {
     records(
@@ -264,7 +264,7 @@ query getRecords(
         requestId: $requestId,
         cacheDuration: $cacheDuration,
         manualDispatch: $manualDispatch,
-        pageSize: $pageSize,
+        requestPageSize: $requestPageSize,
         pageNumber: $pageNumber
     ) {
         ...FunctionRequestInfo
@@ -433,7 +433,7 @@ This example demonstrates how to query records in NetSuite, starting from a spec
 - `requestId`: (Optional) You can include an async request ID, which is utilized for asynchronous data retrieval.
 - `cacheDuration`: Specifies the cache duration in hours. Setting it to 0 bypasses cache for data retrieval.
 - `manualDispatch`: Enables manual asynchronous dispatch, useful for handling large datasets.
-- `pageSize`: Determines the page size for pagination of the result set.
+- `requestPageSize`: Determines the page size for pagination of the result set.
 - `pageNumber`: Specifies the page index for the result set when using pagination.
 
 ```python
@@ -444,7 +444,7 @@ variables = {
     "cacheDuration": 0,
     "manualDispatch": True,
     "requestId": "async_request_123",
-    "pageSize": 10,
+    "requestPageSize": 10,
     "pageNumber": 2,
 }
 payload = {
