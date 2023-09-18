@@ -238,7 +238,6 @@ query getRecordByVariables(
 query getRecords(
     $recordType: String!,
     $cutDate: String,
-    $limit: Int,
     $hours: Decimal,
     $vendorId: String,
     $subsidiary: String,
@@ -254,7 +253,6 @@ query getRecords(
     records(
         recordType: $recordType,
         cutDate: $cutDate,
-        limit: $limit,
         hours: $hours,
         vendorId: $vendorId,
         subsidiary: $subsidiary,
