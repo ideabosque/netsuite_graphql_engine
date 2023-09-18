@@ -18,7 +18,7 @@ repository = "https://github.com/ideabosque/netsuite_graphql_engine"
 
 [tool.poetry.dependencies]
 python = "^3.6"
-SuiteTalk-Connector = "*"
+SuiteTalk-Connector = "^0.0.2"
 graphene = "*"
 pynamodb = "*"
 boto3 = "*"
