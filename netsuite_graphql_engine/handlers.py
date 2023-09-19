@@ -638,9 +638,6 @@ def get_records_async_handler(logger, **kwargs):
                 logger, function_request.record_type, **variables
             )
 
-        logger.info(
-            f"Job ID {result['job_id']}: status ({result['status']}) at percent completed ({result['percent_completed']}) with estimated time to complete ({result['est_remaining_duration']})."
-        )
         return result
 
     record_type = function_request.record_type
@@ -662,17 +659,9 @@ def get_records_async_handler(logger, **kwargs):
     )
 
     if record_type in ["salesOrder", "purchaseOrder"]:
-        result = soap_connector.get_transaction_result(record_type, **variables)
-        logger.info(
-            f"Job ID {result['job_id']}: status ({result['status']}) at percent completed ({result['percent_completed']}) with estimated time to complete ({result['est_remaining_duration']})."
-        )
-        return result
+        return soap_connector.get_transaction_result(record_type, **variables)
     elif record_type in ["inventoryLot"]:
-        result = soap_connector.get_item_result(record_type, **variables)
-        logger.info(
-            f"Job ID {result['job_id']}: status ({result['status']}) at percent completed ({result['percent_completed']}) with estimated time to complete ({result['est_remaining_duration']})."
-        )
-        return result
+        return soap_connector.get_item_result(record_type, **variables)
     else:
         raise Exception(f"Unsupported record type ({record_type}).")
 
@@ -681,14 +670,10 @@ def get_records_async_result(logger, record_type, **kwargs):
     result = soap_connector.get_async_result(
         kwargs.get("job_id"), kwargs.get("page_index", 1)
     )
-    logger.info(
-        f"Total_records/Total_pages {result['total_records']}/{result['total_pages']}: {len(result['records'])} records at page {result['page_index']}."
-    )
 
     if result["total_records"] == 0:
         return []
 
-    # kwargs.update({"limit": 1})
     if record_type in ["salesOrder", "purchaseOrder"]:
         records = soap_connector.get_transactions(
             record_type, result["records"], **kwargs
@@ -699,7 +684,7 @@ def get_records_async_result(logger, record_type, **kwargs):
         raise Exception(f"Unsupported record type ({record_type}).")
 
     logger.info(
-        f"Sart insert or update {record_type} with {len(records)} records in staging at {time.strftime('%X')}."
+        f"Start insert or update {record_type} with {len(records)} records of the page {result['page_index']} in staging at {time.strftime('%X')}."
     )
     internal_ids = []
     for idx, record in enumerate(records):
@@ -710,7 +695,7 @@ def get_records_async_result(logger, record_type, **kwargs):
         insert_update_record_staging(logger, record_type, record)
         internal_ids.append(record.internalId)
     logger.info(
-        f"End insert or update {record_type} with {len(records)} records in staging at {time.strftime('%X')}."
+        f"End insert or update {record_type} with {len(records)} records of the page {result['page_index']} in staging at {time.strftime('%X')}."
     )
 
     if result["total_pages"] == 1:
