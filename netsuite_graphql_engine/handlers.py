@@ -354,9 +354,21 @@ def dispatch_async_function(
                         ),
                     )
                 )
+        # Track progress and calculate the percentage
+        total_tasks = len(tasks)
+        completed_tasks = 0
 
         # Gather the tasks' results from the processes
-        gathered_results = [task.result() for task in tasks]
+        gathered_results = []
+        for task in concurrent.futures.as_completed(tasks):
+            result = task.result()
+            gathered_results.append(result)
+            completed_tasks += 1
+            progress_percent = (completed_tasks / total_tasks) * 100
+            logger.info(
+                f"Progress ({async_function.__name__}): {progress_percent:.2f}%"
+            )
+
         function_request = FunctionRequestModel.get(
             gathered_results[0]["function_name"], request_id
         )
@@ -690,7 +702,7 @@ def get_records_async_result(logger, record_type, **kwargs):
     for idx, record in enumerate(records):
         if (idx + 1) % 25 == 0:
             logger.info(
-                f"Processing insert or update {record_type} with {(idx+1)/len(records) * 100} % completed in staging at {time.strftime('%X')}."
+                f"Processing insert or update {record_type} with {(idx+1)/len(records) * 100}% completed in staging at {time.strftime('%X')}."
             )
         insert_update_record_staging(logger, record_type, record)
         internal_ids.append(record.internalId)
