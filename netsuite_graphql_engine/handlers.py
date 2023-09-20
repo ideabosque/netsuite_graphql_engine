@@ -133,6 +133,9 @@ def async_decorator(original_function):
             kwargs.update({"function_request": function_request})
             result = original_function(*args, **kwargs)
 
+            if result is None:
+                return
+
             if isinstance(result, list):
                 internal_ids = set(function_request.internal_ids + result)
                 function_request.update(
@@ -198,31 +201,36 @@ def async_decorator(original_function):
                 return result
 
             ## Process the async search result.
-            assert result.get("search_id") and result.get(
+            assert result.get("total_pages") and result.get(
                 "page_index"
             ), "The search_id and page_index are required."
 
-            if result["page_index"] == 1:
-                log = f"Total_records/Total_pages {result['total_records']}/{result['total_pages']}: {len(result['internal_ids'])} records at page {result['page_index']}."
-                function_request.update(
-                    actions=[
-                        FunctionRequestModel.internal_ids.set(result["internal_ids"]),
-                        FunctionRequestModel.log.set(log),
-                        FunctionRequestModel.updated_at.set(
-                            datetime.now(tz=timezone("UTC"))
-                        ),
-                    ]
-                )
-                dispatch_async_function(
-                    args[0],
-                    async_functions.get(function_request.function_name),
-                    function_request.request_id,
-                    total_pages=result["total_pages"],
-                    endpoint_id=kwargs.get("endpoint_id"),
-                )
-                return result
+            function_request = FunctionRequestModel.get(
+                function_name, kwargs.get("request_id")
+            )
+            internal_ids = set(function_request.internal_ids + result["internal_ids"])
+            status = (
+                "success"
+                if result["total_records"] == len(internal_ids)
+                else "in_progress"
+            )
+            log = (
+                None
+                if status == "success"
+                else f"Total_records/Total_pages {result['total_records']}/{result['total_pages']}: {len(result['internal_ids'])} records at page {result['page_index']}."
+            )
+            function_request.update(
+                actions=[
+                    FunctionRequestModel.internal_ids.set(internal_ids),
+                    FunctionRequestModel.status.set(status),
+                    FunctionRequestModel.log.set(log),
+                    FunctionRequestModel.updated_at.set(
+                        datetime.now(tz=timezone("UTC"))
+                    ),
+                ]
+            )
 
-            return dict(result, **{"function_name": function_request.function_name})
+            return result
 
         except:
             log = traceback.format_exc()
@@ -329,67 +337,50 @@ async def async_worker(logger, async_function, request_id, page_index):
 
 
 # Define a wrapper worker for the asynchronous task
-async def dispatch_async_worker_wrapper(logger, async_function, request_id, page_index):
+async def async_worker_wrapper(logger, async_function, request_id, page_index):
     result = await async_worker(logger, async_function, request_id, page_index)
     return result
 
 
-def dispatch_async_function(
-    logger, async_function, request_id, total_pages=None, endpoint_id=None
-):
-    ## Dispatch the sync tasks to collect the async result.
-    if total_pages:
-        # Create a list to store the tasks
-        tasks = []
-
-        # Create a multiprocessing Pool
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            # Dispatch asynchronous tasks to different processes for each page index
-            for i in range(2, total_pages + 1):
-                tasks.append(
-                    executor.submit(
-                        asyncio.run,
-                        dispatch_async_worker_wrapper(
-                            logger, async_function, request_id, i
-                        ),
-                    )
+def dispatch_async_worker(logger, async_function, request_id, start_page, end_page):
+    tasks = []
+    # Create a multiprocessing Pool
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        # Dispatch asynchronous tasks to different processes for each page index
+        for i in range(start_page, end_page):
+            tasks.append(
+                executor.submit(
+                    asyncio.run,
+                    async_worker_wrapper(logger, async_function, request_id, i),
                 )
-        # Track progress and calculate the percentage
-        total_tasks = len(tasks)
-        completed_tasks = 0
-
-        # Gather the tasks' results from the processes
-        gathered_results = []
-        for task in concurrent.futures.as_completed(tasks):
-            result = task.result()
-            gathered_results.append(result)
-            completed_tasks += 1
-            progress_percent = (completed_tasks / total_tasks) * 100
-            logger.info(
-                f"Progress ({async_function.__name__}): {progress_percent:.2f}%"
             )
+    # Track progress and calculate the percentage
+    total_tasks = len(tasks)
+    completed_tasks = 0
 
-        function_request = FunctionRequestModel.get(
-            gathered_results[0]["function_name"], request_id
-        )
+    # Gather the tasks' results from the processes
+    gathered_results = []
+    for task in concurrent.futures.as_completed(tasks):
+        result = task.result()
+        gathered_results.append(result)
+        completed_tasks += 1
+        progress_percent = (completed_tasks / total_tasks) * 100
+        logger.info(f"Progress ({async_function}): {progress_percent:.2f}%")
 
-        internal_id_list = [entry["internal_ids"] for entry in gathered_results]
-        internal_ids = set(
-            function_request.internal_ids
-            + [internal_id for sublist in internal_id_list for internal_id in sublist]
-        )
+    internal_id_list = [entry["internal_ids"] for entry in gathered_results]
+    internal_ids = [
+        internal_id for sublist in internal_id_list for internal_id in sublist
+    ]
+    return internal_ids
 
-        function_request.update(
-            actions=[
-                FunctionRequestModel.internal_ids.set(internal_ids),
-                FunctionRequestModel.status.set("success"),
-                FunctionRequestModel.log.set(None),
-                FunctionRequestModel.updated_at.set(datetime.now(tz=timezone("UTC"))),
-            ]
-        )
-        return
 
+def dispatch_async_function(
+    logger, async_function, request_id, start_page=None, end_page=None, endpoint_id=None
+):
     params = {"request_id": str(request_id)}
+    if start_page and end_page:
+        params.update({"start_page": start_page, "end_page": end_page})
+
     if endpoint_id is None:
         eval(f"{async_function.replace('netsuite_', '')}_handler")(logger, **params)
         return
@@ -629,6 +620,16 @@ def get_records_async_handler(logger, **kwargs):
     function_request = kwargs.get("function_request")
     variables = copy.deepcopy(function_request.variables.__dict__["attribute_values"])
 
+    if kwargs.get("start_page") and kwargs.get("end_page"):
+        dispatch_async_worker(
+            logger,
+            async_functions.get(function_request.function_name),
+            function_request.request_id,
+            kwargs.get("start_page"),
+            kwargs.get("end_page"),
+        )
+        return
+
     ## If job_id and page_index are provided, then return the async result.
     if variables.get("job_id") and kwargs.get("page_index"):
         return get_records_async_result(
@@ -647,7 +648,16 @@ def get_records_async_handler(logger, **kwargs):
 
         if result["status"] == "finished":
             return get_records_async_result(
-                logger, function_request.record_type, **variables
+                logger,
+                function_request.record_type,
+                **dict(
+                    variables,
+                    **{
+                        "function_name": function_request.function_name,
+                        "request_id": function_request.request_id,
+                        "endpoint_id": kwargs.get("endpoint_id"),
+                    },
+                ),
             )
 
         return result
@@ -682,6 +692,19 @@ def get_records_async_result(logger, record_type, **kwargs):
     result = soap_connector.get_async_result(
         kwargs.get("job_id"), kwargs.get("page_index", 1)
     )
+
+    if result["page_index"] == 1 and result["total_pages"] > 1:
+        pages_per_batch = 2
+        for start_page in range(2, result["total_pages"] + 1, pages_per_batch):
+            end_page = min(start_page + pages_per_batch, result["total_pages"] + 1)
+            dispatch_async_function(
+                logger,
+                async_functions.get(kwargs.get("function_name")),
+                kwargs.get("request_id"),
+                start_page=start_page,
+                end_page=end_page,
+                endpoint_id=kwargs.get("endpoint_id"),
+            )
 
     if result["total_records"] == 0:
         return []
