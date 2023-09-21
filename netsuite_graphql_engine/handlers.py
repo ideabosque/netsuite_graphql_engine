@@ -34,12 +34,24 @@ def handlers_init(logger, **setting):
     soap_connector = SOAPConnector(logger, **setting)
     rest_connector = RESTConnector(logger, **setting)
     default_timezone = setting.get("TIMEZONE", "UTC")
-    aws_lambda = boto3.client(
-        "lambda",
-        region_name=setting.get("region_name"),
-        aws_access_key_id=setting.get("aws_access_key_id"),
-        aws_secret_access_key=setting.get("aws_secret_access_key"),
-    )
+
+    # Set up AWS credentials in Boto3
+    if (
+        setting.get("region_name")
+        and setting.get("aws_access_key_id")
+        and setting.get("aws_secret_access_key")
+    ):
+        aws_lambda = boto3.client(
+            "lambda",
+            region_name=setting.get("region_name"),
+            aws_access_key_id=setting.get("aws_access_key_id"),
+            aws_secret_access_key=setting.get("aws_secret_access_key"),
+        )
+    else:
+        aws_lambda = boto3.client(
+            "lambda",
+        )
+
     async_function_name = setting.get("ASYNC_FUNCTION_NAME")
     async_functions = setting.get("ASYNC_FUNCTIONS")
     txmap = setting.get("TXMAP")
@@ -124,12 +136,10 @@ def async_decorator(original_function):
         function_name = original_function.__name__.replace(
             "_async_handler", ""
         ).replace("get", "resolve")
-
+        function_request = FunctionRequestModel.get(
+            function_name, kwargs.get("request_id")
+        )
         try:
-            function_request = FunctionRequestModel.get(
-                function_name, kwargs.get("request_id")
-            )
-
             kwargs.update({"function_request": function_request})
             result = original_function(*args, **kwargs)
 
