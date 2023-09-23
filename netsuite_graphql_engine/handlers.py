@@ -593,7 +593,7 @@ def insert_update_record_staging(logger, record_type, record):
         raise
 
 
-async def insert_update_record_stagings(logger, record_type, records):
+async def insert_update_records_staging(logger, record_type, records):
     try:
         # Initialize the DynamoDB table resource
         table = aws_dynamodb.Table("nge-record_stagging")
@@ -773,27 +773,21 @@ def process_records_with_threadpool(logger, record_type, records):
     num_segments = num_async_tasks
 
     async def task_wrapper(logger, record_type, records_slice):
-        return await insert_update_record_stagings(logger, record_type, records_slice)
+        return await insert_update_records_staging(logger, record_type, records_slice)
 
     # Create a multiprocessing Pool
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        start_idx = 0
         # Dispatch asynchronous tasks to different processes for each page index
         for i in range(num_segments):
             # Calculate the number of items per segment, rounding up to ensure no items are left out
             items_per_segment = (
                 len(records) // num_segments
-                if (i >= len(records) // num_segments and len(records) > num_segments)
+                if (i + 1) > (len(records) % num_segments)
                 else math.ceil(len(records) / num_segments)
             )
-            # Calculate the start and end indices for the current segment
-            start_idx = i * items_per_segment
-            end_idx = min(
-                (i + 1) * items_per_segment, len(records)
-            )  # Ensure the last segment doesn't exceed the total
-
-            # Distribute any remaining items to the last segment
-            if i == num_segments - 1 and len(records) % num_segments != 0:
-                end_idx += len(records) % num_segments
+            # Calculate the end index for the current segment
+            end_idx = start_idx + items_per_segment
 
             # # Dispatch the asynchronous task to the process pool
             tasks.append(
@@ -807,6 +801,7 @@ def process_records_with_threadpool(logger, record_type, records):
             if end_idx == len(records):
                 break
 
+            start_idx = end_idx
             if (i + 1) % 10 == 0:
                 time.sleep(10)
 
