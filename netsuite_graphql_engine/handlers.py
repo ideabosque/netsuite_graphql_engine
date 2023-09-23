@@ -4,8 +4,9 @@ from __future__ import print_function
 
 __author__ = "bibow"
 
-import functools, inspect, uuid, boto3, traceback, copy, time, asyncio
+import functools, inspect, uuid, boto3, traceback, copy, time, asyncio, math
 import concurrent.futures
+from boto3.dynamodb.conditions import Key
 from datetime import datetime, timedelta
 from deepdiff import DeepDiff
 from decimal import Decimal
@@ -20,9 +21,11 @@ soap_connector = None
 rest_connector = None
 default_timezone = None
 aws_lambda = None
+aws_dynamodb = None
 async_function_name = None
 async_functions = {}
 txmap = {}
+num_async_tasks = None
 
 
 class FunctionError(Exception):
@@ -30,7 +33,7 @@ class FunctionError(Exception):
 
 
 def handlers_init(logger, **setting):
-    global soap_connector, rest_connector, default_timezone, aws_lambda, async_function_name, async_functions, txmap
+    global soap_connector, rest_connector, default_timezone, aws_lambda, aws_dynamodb, async_function_name, async_functions, txmap, num_async_tasks
     soap_connector = SOAPConnector(logger, **setting)
     rest_connector = RESTConnector(logger, **setting)
     default_timezone = setting.get("TIMEZONE", "UTC")
@@ -47,14 +50,22 @@ def handlers_init(logger, **setting):
             aws_access_key_id=setting.get("aws_access_key_id"),
             aws_secret_access_key=setting.get("aws_secret_access_key"),
         )
+        aws_dynamodb = boto3.resource(
+            "dynamodb",
+            region_name=setting.get("region_name"),
+            aws_access_key_id=setting.get("aws_access_key_id"),
+            aws_secret_access_key=setting.get("aws_secret_access_key"),
+        )
     else:
         aws_lambda = boto3.client(
             "lambda",
         )
+        aws_dynamodb = boto3.resource("dynamodb")
 
     async_function_name = setting.get("ASYNC_FUNCTION_NAME")
     async_functions = setting.get("ASYNC_FUNCTIONS")
     txmap = setting.get("TXMAP")
+    num_async_tasks = setting.get("NUM_ASYNC_TASKS", 10)
 
 
 def funct_decorator(cache_duration=1):
@@ -346,24 +357,25 @@ async def async_worker(logger, async_function, request_id, page_index):
     return eval(f"{async_function.replace('netsuite_', '')}_handler")(logger, **params)
 
 
-# Define a wrapper worker for the asynchronous task
-async def async_worker_wrapper(logger, async_function, request_id, page_index):
-    result = await async_worker(logger, async_function, request_id, page_index)
-    return result
-
-
 def dispatch_async_worker(logger, async_function, request_id, start_page, end_page):
+    async def task_wrapper(logger, async_function, request_id, page_index):
+        return await async_worker(logger, async_function, request_id, page_index)
+
     tasks = []
     # Create a multiprocessing Pool
-    with concurrent.futures.ThreadPoolExecutor() as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
         # Dispatch asynchronous tasks to different processes for each page index
         for i in range(start_page, end_page):
+            # Define a wrapper worker for the asynchronous task
+
+            # Dispatch the asynchronous task to the process pool
             tasks.append(
                 executor.submit(
                     asyncio.run,
-                    async_worker_wrapper(logger, async_function, request_id, i),
+                    task_wrapper(logger, async_function, request_id, i),
                 )
             )
+
     # Track progress and calculate the percentage
     total_tasks = len(tasks)
     completed_tasks = 0
@@ -564,14 +576,71 @@ def insert_update_record_staging(logger, record_type, record):
                     "updated_at": datetime.now(tz=timezone("UTC")),
                 },
             ).save()
-        else:
-            record_staging = RecordStagingModel.get(record_type, record.internalId)
-            record_staging.update(
-                actions=[
-                    RecordStagingModel.data.set(object_to_dict(record)),
-                    RecordStagingModel.updated_at.set(datetime.now(tz=timezone("UTC"))),
-                ]
+            return
+
+        record_staging = RecordStagingModel.get(record_type, record.internalId)
+        record_staging.update(
+            actions=[
+                RecordStagingModel.data.set(object_to_dict(record)),
+                RecordStagingModel.updated_at.set(datetime.now(tz=timezone("UTC"))),
+            ]
+        )
+        return
+    except:
+        log = traceback.format_exc()
+        logger.exception(log)
+        logger.info(Utility.json_dumps(object_to_dict(record)))
+        raise
+
+
+async def insert_update_record_stagings(logger, record_type, records):
+    try:
+        # Initialize the DynamoDB table resource
+        table = aws_dynamodb.Table("nge-record_stagging")
+
+        internal_ids = []
+        for record in records:
+            # Check if the record already exists
+            response = table.query(
+                KeyConditionExpression=Key("record_type").eq(record_type)
+                & Key("internal_id").eq(record.internalId)
             )
+
+            # If no matching record found, insert a new one
+            if response["Count"] == 0:
+                table.put_item(
+                    Item={
+                        "record_type": record_type,
+                        "internal_id": record.internalId,
+                        "data": Utility.json_dumps(object_to_dict(record)),
+                        "created_at": datetime.now(tz=timezone("UTC")).strftime(
+                            "%Y-%m-%dT%H:%M:%S.%f%z"
+                        ),
+                        "updated_at": datetime.now(tz=timezone("UTC")).strftime(
+                            "%Y-%m-%dT%H:%M:%S.%f%z"
+                        ),
+                    }
+                )
+            else:
+                # If a matching record exists, update it
+                update_expression = "SET #data = :data, updated_at = :updated_at"
+                expression_attribute_names = {
+                    "#data": "data"
+                }  # Use an ExpressionAttributeNames to map 'data' to a reserved keyword
+                expression_attribute_values = {
+                    ":data": Utility.json_dumps(object_to_dict(record)),
+                    ":updated_at": datetime.now(tz=timezone("UTC")).strftime(
+                        "%Y-%m-%dT%H:%M:%S.%f%z"
+                    ),
+                }
+                table.update_item(
+                    Key={"record_type": record_type, "internal_id": record.internalId},
+                    UpdateExpression=update_expression,
+                    ExpressionAttributeNames=expression_attribute_names,
+                    ExpressionAttributeValues=expression_attribute_values,
+                )
+            internal_ids.append(record.internalId)
+        return internal_ids
     except:
         log = traceback.format_exc()
         logger.exception(log)
@@ -698,6 +767,71 @@ def get_records_async_handler(logger, **kwargs):
         raise Exception(f"Unsupported record type ({record_type}).")
 
 
+# Define a function for processing records using ThreadPoolExecutor with more threads
+def process_records_with_threadpool(logger, record_type, records):
+    tasks = []
+    num_segments = num_async_tasks
+
+    async def task_wrapper(logger, record_type, records_slice):
+        return await insert_update_record_stagings(logger, record_type, records_slice)
+
+    # Create a multiprocessing Pool
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        # Dispatch asynchronous tasks to different processes for each page index
+        for i in range(num_segments):
+            # Calculate the number of items per segment, rounding up to ensure no items are left out
+            items_per_segment = (
+                len(records) // num_segments
+                if (i >= len(records) // num_segments and len(records) > num_segments)
+                else math.ceil(len(records) / num_segments)
+            )
+            # Calculate the start and end indices for the current segment
+            start_idx = i * items_per_segment
+            end_idx = min(
+                (i + 1) * items_per_segment, len(records)
+            )  # Ensure the last segment doesn't exceed the total
+
+            # Distribute any remaining items to the last segment
+            if i == num_segments - 1 and len(records) % num_segments != 0:
+                end_idx += len(records) % num_segments
+
+            # # Dispatch the asynchronous task to the process pool
+            tasks.append(
+                executor.submit(
+                    asyncio.run,
+                    task_wrapper(logger, record_type, records[start_idx:end_idx]),
+                )
+            )
+
+            # Break the loop if the end index reaches the total
+            if end_idx == len(records):
+                break
+
+            if (i + 1) % 10 == 0:
+                time.sleep(10)
+
+        # Track progress and calculate the percentage
+        total_tasks = len(tasks)
+        completed_tasks = 0
+
+        gathered_results = []
+        # Gather the tasks' results from the processes
+        for task in concurrent.futures.as_completed(tasks):
+            result = task.result()
+            gathered_results.append(result)
+            completed_tasks += 1
+            progress_percent = (completed_tasks / total_tasks) * 100
+            logger.info(
+                f"Progress insert or update {record_type}: {progress_percent:.2f}%"
+            )
+
+        internal_id_list = [entry for entry in gathered_results]
+        internal_ids = [
+            internal_id for sublist in internal_id_list for internal_id in sublist
+        ]
+        return internal_ids
+
+
 def get_records_async_result(logger, record_type, **kwargs):
     result = soap_connector.get_async_result(
         kwargs.get("job_id"), kwargs.get("page_index", 1)
@@ -731,14 +865,7 @@ def get_records_async_result(logger, record_type, **kwargs):
     logger.info(
         f"Start insert or update {record_type} with {len(records)} records of the page {result['page_index']} in staging at {time.strftime('%X')}."
     )
-    internal_ids = []
-    for idx, record in enumerate(records):
-        if (idx + 1) % 25 == 0:
-            logger.info(
-                f"Processing insert or update {record_type} with {(idx+1)/len(records) * 100}% completed in staging at {time.strftime('%X')}."
-            )
-        insert_update_record_staging(logger, record_type, record)
-        internal_ids.append(record.internalId)
+    internal_ids = process_records_with_threadpool(logger, record_type, records)
     logger.info(
         f"End insert or update {record_type} with {len(records)} records of the page {result['page_index']} in staging at {time.strftime('%X')}."
     )
