@@ -295,22 +295,24 @@ def monitor_decorator(original_function):
     return wrapper_function
 
 
-def transform_value(key, value):
-    if key not in txmap.keys():
+def transform_value(record_type, key, value):
+    if record_type not in txmap.keys():
+        return value
+    if key not in txmap[record_type].keys():
         return value
 
-    tx_funct = lambda value: eval(txmap[key])
+    tx_funct = lambda value: eval(txmap[record_type][key])
     return tx_funct(value)
 
 
-def object_to_dict(obj):
+def object_to_dict(record_type, obj):
     def handle_value(value):
         if isinstance(value, list):
             return [handle_value(item) for item in value]
         elif isinstance(value, dict):
             return {key: handle_value(val) for key, val in value.items()}
         elif hasattr(value, "__dict__"):
-            return object_to_dict(value)
+            return object_to_dict(record_type, value)
         elif isinstance(value, datetime):
             return value.strftime(datetime_format)  # You should define datetime_format
         else:
@@ -324,7 +326,7 @@ def object_to_dict(obj):
         if value is None:
             continue
 
-        obj_dict[key] = transform_value(key, handle_value(value))
+        obj_dict[key] = transform_value(record_type, key, handle_value(value))
     return obj_dict
 
 
@@ -571,7 +573,7 @@ def insert_update_record_staging(logger, record_type, record):
                 record_type,
                 record.internalId,
                 **{
-                    "data": object_to_dict(record),
+                    "data": object_to_dict(record_type, record),
                     "created_at": datetime.now(tz=timezone("UTC")),
                     "updated_at": datetime.now(tz=timezone("UTC")),
                 },
@@ -581,7 +583,7 @@ def insert_update_record_staging(logger, record_type, record):
         record_staging = RecordStagingModel.get(record_type, record.internalId)
         record_staging.update(
             actions=[
-                RecordStagingModel.data.set(object_to_dict(record)),
+                RecordStagingModel.data.set(object_to_dict(record_type, record)),
                 RecordStagingModel.updated_at.set(datetime.now(tz=timezone("UTC"))),
             ]
         )
@@ -589,7 +591,7 @@ def insert_update_record_staging(logger, record_type, record):
     except:
         log = traceback.format_exc()
         logger.exception(log)
-        logger.info(Utility.json_dumps(object_to_dict(record)))
+        logger.info(Utility.json_dumps(object_to_dict(record_type, record)))
         raise
 
 
@@ -612,7 +614,7 @@ async def insert_update_records_staging(logger, record_type, records):
                     Item={
                         "record_type": record_type,
                         "internal_id": record.internalId,
-                        "data": Utility.json_dumps(object_to_dict(record)),
+                        "data": Utility.json_dumps(object_to_dict(record_type, record)),
                         "created_at": datetime.now(tz=timezone("UTC")).strftime(
                             "%Y-%m-%dT%H:%M:%S.%f%z"
                         ),
@@ -628,7 +630,7 @@ async def insert_update_records_staging(logger, record_type, records):
                     "#data": "data"
                 }  # Use an ExpressionAttributeNames to map 'data' to a reserved keyword
                 expression_attribute_values = {
-                    ":data": Utility.json_dumps(object_to_dict(record)),
+                    ":data": Utility.json_dumps(object_to_dict(record_type, record)),
                     ":updated_at": datetime.now(tz=timezone("UTC")).strftime(
                         "%Y-%m-%dT%H:%M:%S.%f%z"
                     ),
@@ -644,7 +646,7 @@ async def insert_update_records_staging(logger, record_type, records):
     except:
         log = traceback.format_exc()
         logger.exception(log)
-        logger.info(Utility.json_dumps(object_to_dict(record)))
+        logger.info(Utility.json_dumps(object_to_dict(record_type, record)))
         raise
 
 
@@ -761,6 +763,8 @@ def get_records_async_handler(logger, **kwargs):
 
     if record_type in ["salesOrder", "purchaseOrder"]:
         return soap_connector.get_transaction_result(record_type, **variables)
+    elif record_type in ["customer", "vendor", "contact"]:
+        return soap_connector.get_person_result(record_type, **variables)
     elif record_type in ["inventoryLot"]:
         return soap_connector.get_item_result(record_type, **variables)
     else:
@@ -852,6 +856,8 @@ def get_records_async_result(logger, record_type, **kwargs):
         records = soap_connector.get_transactions(
             record_type, result["records"], **kwargs
         )
+    elif record_type in ["customer", "vendor", "contact"]:
+        records = soap_connector.get_persons(record_type, result["records"], **kwargs)
     elif record_type in ["inventoryLot"]:
         records = soap_connector.get_items(record_type, result["records"], **kwargs)
     else:
