@@ -12,6 +12,7 @@ from deepdiff import DeepDiff
 from decimal import Decimal
 from pytz import timezone
 from silvaengine_utility import Utility
+from silvaengine_dynamodb_base import monitor_decorator
 from suitetalk_connector import SOAPConnector, RESTConnector
 from .types import SelectValueType, FunctionRequestType
 from .models import FunctionRequestModel, RecordStagingModel
@@ -266,31 +267,6 @@ def async_decorator(original_function):
                 ]
             )
             raise
-
-    return wrapper_function
-
-
-def monitor_decorator(original_function):
-    @functools.wraps(original_function)
-    def wrapper_function(*args, **kwargs):
-        # Get the signature of the original function
-        signature = inspect.signature(original_function)
-        # Get the parameter names from the signature
-        parameter_names = list(signature.parameters.keys())
-
-        if "info" in parameter_names:
-            logger = args[0].context.get("logger")
-        elif "logger" in parameter_names:
-            logger = args[0]
-
-        logger.info(
-            f"Start function: {original_function.__name__} at {time.strftime('%X')}!!"
-        )
-        result = original_function(*args, **kwargs)
-        logger.info(
-            f"End function: {original_function.__name__} at {time.strftime('%X')}!!"
-        )
-        return result
 
     return wrapper_function
 

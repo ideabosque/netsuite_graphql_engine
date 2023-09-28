@@ -24,6 +24,7 @@ setup(
         "pynamodb",
         "boto3",
         "silvaengine_utility",
+        "silvaengine_dynamodb_base",
         "deepdiff",
     ],
     keywords=[
