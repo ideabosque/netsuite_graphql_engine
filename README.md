@@ -26,7 +26,8 @@ To easily install the NetSuite GraphQL Engine using pip and Git, execute the fol
 
 ```shell
 $ python -m pip install git+ssh://git@github.com/ideabosque/silvaengine_utility.git@main#egg=silvaengine_utility
-$ python -m pip install NetSuite-GraphQL-Engine'
+$ python -m pip install git+ssh://git@github.com/ideabosque/silvaengine_dynamodb_base.git@main#egg=silvaengine_dynamodb_base
+$ python -m pip install NetSuite-GraphQL-Engine
 ```
 
 ## Configuration

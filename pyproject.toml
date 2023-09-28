@@ -22,7 +22,8 @@ SuiteTalk-Connector = "^0.0.2"
 graphene = "*"
 pynamodb = "*"
 boto3 = "*"
-silvaengine_utility = "*"
+silvaengine_utility = "^0.0.2"
+silvaengine_dynamodb_base = "^0.0.1"
 deepdiff = "*"
 
 [tool.poetry.dev-dependencies]

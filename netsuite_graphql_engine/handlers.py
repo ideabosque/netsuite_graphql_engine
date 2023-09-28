@@ -306,12 +306,10 @@ def object_to_dict(record_type, obj):
     return obj_dict
 
 
-def convert_values(kwargs, parser_number=True):
+def convert_values(kwargs, parse_decimal=True):
     def convert(value):
-        if isinstance(value, Decimal) and parser_number:
+        if isinstance(value, Decimal) and parse_decimal:
             return float(value)
-        elif isinstance(value, float) and not parser_number:
-            return Decimal(value)
         elif isinstance(value, datetime):
             return datetime.strftime(value, datetime_format)
         elif isinstance(value, list):
@@ -582,8 +580,10 @@ async def insert_update_records_staging(logger, record_type, records):
         internal_ids = []
         for record in records:
             data = convert_values(
-                object_to_dict(record_type, record),
-                parser_number=False,
+                Utility.json_loads(
+                    Utility.json_dumps(object_to_dict(record_type, record)),
+                ),
+                parse_decimal=False,
             )
 
             # Check if the record already exists
@@ -764,7 +764,7 @@ def process_records_with_threadpool(logger, record_type, records):
         return await insert_update_records_staging(logger, record_type, records_slice)
 
     # Create a multiprocessing Pool
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         start_idx = 0
         # Dispatch asynchronous tasks to different processes for each page index
         for i in range(num_segments):
