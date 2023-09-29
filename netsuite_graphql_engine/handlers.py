@@ -12,6 +12,7 @@ from deepdiff import DeepDiff
 from decimal import Decimal
 from pytz import timezone
 from silvaengine_utility import Utility
+from silvaengine_dynamodb_base import monitor_decorator
 from suitetalk_connector import SOAPConnector, RESTConnector
 from .types import SelectValueType, FunctionRequestType
 from .models import FunctionRequestModel, RecordStagingModel
@@ -270,31 +271,6 @@ def async_decorator(original_function):
     return wrapper_function
 
 
-def monitor_decorator(original_function):
-    @functools.wraps(original_function)
-    def wrapper_function(*args, **kwargs):
-        # Get the signature of the original function
-        signature = inspect.signature(original_function)
-        # Get the parameter names from the signature
-        parameter_names = list(signature.parameters.keys())
-
-        if "info" in parameter_names:
-            logger = args[0].context.get("logger")
-        elif "logger" in parameter_names:
-            logger = args[0]
-
-        logger.info(
-            f"Start function: {original_function.__name__} at {time.strftime('%X')}!!"
-        )
-        result = original_function(*args, **kwargs)
-        logger.info(
-            f"End function: {original_function.__name__} at {time.strftime('%X')}!!"
-        )
-        return result
-
-    return wrapper_function
-
-
 def transform_value(record_type, key, value):
     if record_type not in txmap.keys():
         return value
@@ -330,12 +306,10 @@ def object_to_dict(record_type, obj):
     return obj_dict
 
 
-def convert_values(kwargs, parser_number=True):
+def convert_values(kwargs, parse_decimal=True):
     def convert(value):
-        if isinstance(value, Decimal) and parser_number:
+        if isinstance(value, Decimal) and parse_decimal:
             return float(value)
-        elif isinstance(value, float) and not parser_number:
-            return Decimal(value)
         elif isinstance(value, datetime):
             return datetime.strftime(value, datetime_format)
         elif isinstance(value, list):
@@ -606,8 +580,10 @@ async def insert_update_records_staging(logger, record_type, records):
         internal_ids = []
         for record in records:
             data = convert_values(
-                object_to_dict(record_type, record),
-                parser_number=False,
+                Utility.json_loads(
+                    Utility.json_dumps(object_to_dict(record_type, record)),
+                ),
+                parse_decimal=False,
             )
 
             # Check if the record already exists
@@ -788,7 +764,7 @@ def process_records_with_threadpool(logger, record_type, records):
         return await insert_update_records_staging(logger, record_type, records_slice)
 
     # Create a multiprocessing Pool
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         start_idx = 0
         # Dispatch asynchronous tasks to different processes for each page index
         for i in range(num_segments):

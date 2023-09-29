@@ -15,12 +15,7 @@ from pynamodb.attributes import (
     BooleanAttribute,
 )
 from pynamodb.indexes import GlobalSecondaryIndex, LocalSecondaryIndex, AllProjection
-
-
-class BaseModel(Model):
-    class Meta:
-        region = os.getenv("REGIONNAME")
-        billing_mode = "PAY_PER_REQUEST"
+from silvaengine_dynamodb_base import BaseModel
 
 
 class FunctionRequestModel(BaseModel):
