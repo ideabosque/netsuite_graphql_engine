@@ -7,7 +7,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="NetSuite-GraphQL-Engine",
-    version="0.0.3.beta.1",
+    version="0.0.3",
     url="https://github.com/ideabosque/netsuite_graphql_engine",
     license="MIT",
     author="Idea Bosque",
@@ -19,7 +19,7 @@ setup(
     include_package_data=True,
     platforms="any",
     install_requires=[
-        "SuiteTalk-Connector>=0.0.2",
+        "SuiteTalk-Connector>=0.0.3",
         "graphene",
         "pynamodb",
         "boto3",
