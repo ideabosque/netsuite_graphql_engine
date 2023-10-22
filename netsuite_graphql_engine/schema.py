@@ -7,7 +7,7 @@ __author__ = "bibow"
 import time
 from graphene import ObjectType, String, List, Field, Int, DateTime, Boolean, Decimal
 from .types import SelectValueType, FunctionRequestType
-from .mutations import InsertUpdateRecord
+from .mutations import InsertUpdateRecord, DeleteFunctionRequest
 from .queries import (
     resolve_select_values,
     resolve_record,
@@ -85,3 +85,4 @@ class Query(ObjectType):
 
 class Mutations(ObjectType):
     insert_update_record = InsertUpdateRecord.Field()
+    delete_function_request = DeleteFunctionRequest.Field()

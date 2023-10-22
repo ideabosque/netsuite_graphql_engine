@@ -634,6 +634,25 @@ async def insert_update_records_staging(logger, record_type, records):
         raise
 
 
+async def delete_records_staging(logger, record_type, records):
+    try:
+        # Initialize the DynamoDB table resource
+        table = aws_dynamodb.Table("nge-record_stagging")
+        internal_ids = []
+        for record in records:
+            # Check if the record already exists
+            table.delete_item(
+                Key={"record_type": record_type, "internal_id": record["internal_id"]}
+            )
+            internal_ids.append(record["internal_id"])
+        return internal_ids
+    except:
+        log = traceback.format_exc()
+        logger.exception(log)
+        logger.info(Utility.json_dumps(object_to_dict(record_type, record)))
+        raise
+
+
 @monitor_decorator
 @async_decorator
 def get_record_async_handler(logger, **kwargs):
@@ -756,11 +775,13 @@ def get_records_async_handler(logger, **kwargs):
 
 
 # Define a function for processing records using ThreadPoolExecutor with more threads
-def process_records_with_threadpool(logger, record_type, records):
+def process_records_with_threadpool(logger, record_type, records, delete_rcords=False):
     tasks = []
     num_segments = num_async_tasks
 
     async def task_wrapper(logger, record_type, records_slice):
+        if delete_rcords:
+            return await delete_records_staging(logger, record_type, records_slice)
         return await insert_update_records_staging(logger, record_type, records_slice)
 
     # Create a multiprocessing Pool
@@ -805,7 +826,7 @@ def process_records_with_threadpool(logger, record_type, records):
             completed_tasks += 1
             progress_percent = (completed_tasks / total_tasks) * 100
             logger.info(
-                f"Progress insert or update {record_type}: {progress_percent:.2f}%"
+                f"Progress {'delete' if delete_rcords else 'insert or update'} {record_type}: {progress_percent:.2f}%"
             )
 
         internal_id_list = [entry for entry in gathered_results]
@@ -920,3 +941,23 @@ def insert_update_record_async_handler(logger, **kwargs):
 @funct_decorator(cache_duration=0)
 def insert_update_record_handler(info, **kwargs):
     return get_function_request(info, **kwargs)
+
+
+@monitor_decorator
+def delete_function_request_handler(info, **kwargs):
+    function_request = FunctionRequestModel.get(
+        kwargs.get("function_name"), kwargs.get("request_id")
+    )
+    records = [
+        {"internal_id": internal_id} for internal_id in function_request.internal_ids
+    ]
+
+    process_records_with_threadpool(
+        info.context.get("logger"),
+        function_request.record_type,
+        records,
+        delete_rcords=True,
+    )
+
+    function_request.delete()
+    return True
