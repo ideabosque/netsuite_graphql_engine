@@ -56,8 +56,6 @@ class Query(ObjectType):
         hours=Decimal(),
         vendor_id=String(),
         subsidiary=String(),
-        item_detail=Boolean(),
-        inventory_detail=Boolean(),
         internal_ids=List(String),
         request_id=String(),
         cache_duration=Decimal(),

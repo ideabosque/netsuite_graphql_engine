@@ -242,8 +242,6 @@ query getRecords(
     $hours: Decimal,
     $vendorId: String,
     $subsidiary: String,
-    $itemDetail: Boolean,
-    $inventoryDetail: Boolean,
     $internalIds: [String],
     $requestId: String,
     $cacheDuration: Decimal,
@@ -257,8 +255,6 @@ query getRecords(
         hours: $hours,
         vendorId: $vendorId,
         subsidiary: $subsidiary,
-        itemDetail: $itemDetail,
-        inventoryDetail: $inventoryDetail,
         internalIds: $internalIds,
         requestId: $requestId,
         cacheDuration: $cacheDuration,
@@ -426,8 +422,6 @@ This example demonstrates how to query records in NetSuite, starting from a spec
 - `hours`: Specifies the time duration, in hours, from the cut date for retrieving records. Use 0 to include all records from the cut date onwards.
 - `vendorId`: (Optional) Specifies the vendor for data querying.
 - `subsidiary`: (Optional) Specifies the subsidiary for data querying.
-- `itemDetail`: (Optional) Specifies whether to request item detail (Boolean).
-- `inventoryDetail`: (Optional) Specifies whether to request inventory detail (Boolean).
 - `internalIds`: (Optional) Specifies internal IDs for querying records. If set, the cutDate parameter will not be used.
 - `requestId`: (Optional) You can include an async request ID, which is utilized for asynchronous data retrieval.
 - `cacheDuration`: Specifies the cache duration in hours. Setting it to 0 bypasses cache for data retrieval.
