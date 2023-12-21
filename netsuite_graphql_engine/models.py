@@ -29,6 +29,7 @@ class FunctionRequestModel(BaseModel):
     variables = MapAttribute()
     status = UnicodeAttribute(default="initial")
     log = UnicodeAttribute(null=True)
+    updated_by = UnicodeAttribute(default="system")
     created_at = UTCDateTimeAttribute()
     updated_at = UTCDateTimeAttribute()
 
@@ -56,4 +57,5 @@ class RecordStagingModel(BaseModel):
     data = MapAttribute()
     created_at = UTCDateTimeAttribute()
     updated_at = UTCDateTimeAttribute()
+    updated_by = UnicodeAttribute(default="system")
     updated_at_index = RecordTypeUpdatedAtIndex()

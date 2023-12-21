@@ -36,3 +36,4 @@ class FunctionRequestType(ObjectType):
     total_records = Int()
     created_at = DateTime()
     updated_at = DateTime()
+    updated_by = String()

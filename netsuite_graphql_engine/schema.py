@@ -37,6 +37,7 @@ class Query(ObjectType):
         use_external_id=Boolean(),
         request_id=String(),
         cache_duration=Decimal(),
+        requested_by=String(),
     )
 
     record_by_variables = Field(
@@ -47,6 +48,7 @@ class Query(ObjectType):
         operator=String(),
         request_id=String(),
         cache_duration=Decimal(),
+        requested_by=String(),
     )
 
     records = Field(
@@ -63,6 +65,7 @@ class Query(ObjectType):
         manual_dispatch=Boolean(),
         request_page_size=Int(),
         request_page_number=Int(),
+        requested_by=String(),
     )
 
     def resolve_ping(self, info):

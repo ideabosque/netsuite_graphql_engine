@@ -29,6 +29,7 @@ class InsertUpdateRecord(Mutation):
         entity = JSON(required=True)
         transaction_record_type = String()
         request_id = String()
+        requested_by = String()
 
     @staticmethod
     def mutate(root, info, **kwargs):

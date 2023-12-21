@@ -86,15 +86,18 @@ def funct_decorator(cache_duration=1):
                 manual_dispatch = kwargs.get("manual_dispatch", False)
 
                 ## Dispatch the request to the lambda worker to get the data.
-                if function_request.status == "initial" and not manual_dispatch:
-                    function_request.update(
-                        actions=[
-                            FunctionRequestModel.status.set("in_progress"),
-                            FunctionRequestModel.updated_at.set(
-                                datetime.now(tz=timezone("UTC"))
-                            ),
-                        ]
+                actions = [
+                    FunctionRequestModel.updated_at.set(
+                        datetime.now(tz=timezone("UTC"))
+                    ),
+                ]
+                if kwargs.get("requested_by"):
+                    actions.append(
+                        FunctionRequestModel.updated_by.set(kwargs.get("requested_by"))
                     )
+                if function_request.status == "initial" and not manual_dispatch:
+                    actions.append(FunctionRequestModel.status.set("in_progress"))
+                    function_request.update(actions=actions)
                     dispatch_async_function(
                         args[0].context.get("logger"),
                         async_functions.get(function_request.function_name),
@@ -103,14 +106,8 @@ def funct_decorator(cache_duration=1):
                     )
 
                 if function_request.status == "initial" and manual_dispatch:
-                    function_request.update(
-                        actions=[
-                            FunctionRequestModel.status.set("fetch_later"),
-                            FunctionRequestModel.updated_at.set(
-                                datetime.now(tz=timezone("UTC"))
-                            ),
-                        ]
-                    )
+                    actions.append(FunctionRequestModel.status.set("fetch_later"))
+                    function_request.update(actions=actions)
 
                 function_request_type = {
                     "function_name": function_request.function_name,
@@ -127,6 +124,7 @@ def funct_decorator(cache_duration=1):
                     "total_records": len(function_request.internal_ids),
                     "created_at": function_request.created_at,
                     "updated_at": function_request.updated_at,
+                    "updated_by": function_request.updated_by,
                 }
                 if data is not None:
                     function_request_type.update({"data": data})
@@ -158,18 +156,22 @@ def async_decorator(original_function):
             if result is None:
                 return
 
+            actions = [
+                FunctionRequestModel.updated_at.set(datetime.now(tz=timezone("UTC"))),
+            ]
+            if kwargs.get("requested_by"):
+                actions.append(
+                    FunctionRequestModel.updated_by.set(kwargs.get("requested_by"))
+                )
             if isinstance(result, list):
                 internal_ids = set(function_request.internal_ids + result)
-                function_request.update(
-                    actions=[
+                actions.extend(
+                    [
                         FunctionRequestModel.internal_ids.set(internal_ids),
                         FunctionRequestModel.status.set("success"),
-                        FunctionRequestModel.log.set(None),
-                        FunctionRequestModel.updated_at.set(
-                            datetime.now(tz=timezone("UTC"))
-                        ),
                     ]
                 )
+                function_request.update(actions=actions)
                 return result
 
             assert isinstance(result, dict), "The result must be a dict instance."
@@ -189,27 +191,17 @@ def async_decorator(original_function):
                 ):
                     fetch_now = True
 
+                actions.extend(
+                    [
+                        FunctionRequestModel.variables.set(variables),
+                        FunctionRequestModel.log.set(log),
+                    ]
+                )
                 if fetch_now:
-                    function_request.update(
-                        actions=[
-                            FunctionRequestModel.variables.set(variables),
-                            FunctionRequestModel.log.set(log),
-                            FunctionRequestModel.updated_at.set(
-                                datetime.now(tz=timezone("UTC"))
-                            ),
-                        ]
-                    )
+                    function_request.update(actions=actions)
                 else:
-                    function_request.update(
-                        actions=[
-                            FunctionRequestModel.variables.set(variables),
-                            FunctionRequestModel.status.set("fetch_later"),
-                            FunctionRequestModel.log.set(log),
-                            FunctionRequestModel.updated_at.set(
-                                datetime.now(tz=timezone("UTC"))
-                            ),
-                        ]
-                    )
+                    actions.append(FunctionRequestModel.status.set("fetch_later"))
+                    function_request.update(actions=actions)
 
                 ## If est_remaining_duration <= 120, the process will sleep with est_remaining_duration and dispatch the next step.
                 if fetch_now:
@@ -241,31 +233,33 @@ def async_decorator(original_function):
                 if status == "success"
                 else f"Total_records/Total_pages {result['total_records']}/{result['total_pages']}: {len(result['internal_ids'])} records at page {result['page_index']}."
             )
-            function_request.update(
-                actions=[
-                    FunctionRequestModel.internal_ids.set(internal_ids),
-                    FunctionRequestModel.status.set(status),
-                    FunctionRequestModel.log.set(log),
-                    FunctionRequestModel.updated_at.set(
-                        datetime.now(tz=timezone("UTC"))
-                    ),
-                ]
-            )
+            actions = [
+                FunctionRequestModel.internal_ids.set(internal_ids),
+                FunctionRequestModel.status.set(status),
+                FunctionRequestModel.log.set(log),
+                FunctionRequestModel.updated_at.set(datetime.now(tz=timezone("UTC"))),
+            ]
+            if kwargs.get("requested_by"):
+                actions.append(
+                    FunctionRequestModel.updated_by.set(kwargs.get("requested_by"))
+                )
+            function_request.update(actions=actions)
 
             return result
 
         except:
             log = traceback.format_exc()
             args[0].exception(log)
-            function_request.update(
-                actions=[
-                    FunctionRequestModel.status.set("failed"),
-                    FunctionRequestModel.log.set(log),
-                    FunctionRequestModel.updated_at.set(
-                        datetime.now(tz=timezone("UTC"))
-                    ),
-                ]
-            )
+            actions = [
+                FunctionRequestModel.status.set("failed"),
+                FunctionRequestModel.log.set(log),
+                FunctionRequestModel.updated_at.set(datetime.now(tz=timezone("UTC"))),
+            ]
+            if kwargs.get("requested_by"):
+                actions.append(
+                    FunctionRequestModel.updated_by.set(kwargs.get("requested_by"))
+                )
+            function_request.update(actions=actions)
             raise
 
     return wrapper_function
@@ -405,6 +399,7 @@ def get_data_detail(info, record_type, internal_ids):
         return []
     results = RecordStagingModel.updated_at_index.query(
         record_type,
+        None,
         RecordStagingModel.internal_id.is_in(*internal_ids),
     )
     return [record.data.__dict__["attribute_values"] for record in results]
@@ -471,15 +466,35 @@ def get_function_request(info, **kwargs):
     )
     entities = [entity for entity in results]
     if len(entities) > 0:
-        last_entity = max(entities, key=lambda x: x.updated_at)
-        diff_data = DeepDiff(
-            Utility.json_loads(
-                Utility.json_dumps(last_entity.variables.__dict__["attribute_values"])
-            ),
-            Utility.json_loads(Utility.json_dumps(variables)),
-            ignore_order=True,
+        diff_data_list = list(
+            map(
+                lambda x: {
+                    "diff_data": DeepDiff(
+                        Utility.json_loads(
+                            Utility.json_dumps(x.variables.__dict__["attribute_values"])
+                        ),
+                        Utility.json_loads(Utility.json_dumps(variables)),
+                        ignore_order=True,
+                    ),
+                    "entity": x,
+                },
+                entities,
+            )
         )
-        if diff_data == {}:
+        matched_data_list = list(
+            filter(
+                lambda x: x["diff_data"] == {}
+                or (
+                    len(x["diff_data"].affected_root_keys.items) == 1
+                    and "requested_by" in x["diff_data"].affected_root_keys.items
+                ),
+                diff_data_list,
+            )
+        )
+        if len(matched_data_list) > 0:
+            last_entity = max(
+                [x["entity"] for x in matched_data_list], key=lambda x: x.updated_at
+            )
             data = (
                 get_data_detail(
                     info, record_type, last_entity.internal_ids[start_idx:end_idx]
@@ -490,16 +505,19 @@ def get_function_request(info, **kwargs):
             return last_entity, data
 
     request_id = str(uuid.uuid1().int >> 64)
+    data = {
+        "record_type": record_type,
+        "variables": variables,
+        "internal_ids": [],
+        "created_at": datetime.now(tz=timezone("UTC")),
+        "updated_at": datetime.now(tz=timezone("UTC")),
+    }
+    if kwargs.get("requested_by"):
+        data["updated_by"] = kwargs.get("requested_by")
     FunctionRequestModel(
         function_name,
         request_id,
-        **{
-            "record_type": record_type,
-            "variables": variables,
-            "internal_ids": [],
-            "created_at": datetime.now(tz=timezone("UTC")),
-            "updated_at": datetime.now(tz=timezone("UTC")),
-        },
+        **data,
     ).save()
 
     function_request = FunctionRequestModel.get(function_name, request_id)
@@ -538,7 +556,7 @@ def resolve_select_values_handler(info, **kwargs):
     ]
 
 
-def insert_update_record_staging(logger, record_type, record):
+def insert_update_record_staging(logger, record_type, record, updated_by=None):
     try:
         data = object_to_dict(record_type, record)
 
@@ -547,24 +565,28 @@ def insert_update_record_staging(logger, record_type, record):
             RecordStagingModel.internal_id == record.internalId,
         )
         if count == 0:
+            record_staging = {
+                "data": data,
+                "created_at": datetime.now(tz=timezone("UTC")),
+                "updated_at": datetime.now(tz=timezone("UTC")),
+            }
+            if updated_by:
+                record_staging["updated_by"] = updated_by
             RecordStagingModel(
                 record_type,
                 record.internalId,
-                **{
-                    "data": data,
-                    "created_at": datetime.now(tz=timezone("UTC")),
-                    "updated_at": datetime.now(tz=timezone("UTC")),
-                },
+                **record_staging,
             ).save()
             return
 
         record_staging = RecordStagingModel.get(record_type, record.internalId)
-        record_staging.update(
-            actions=[
-                RecordStagingModel.data.set(data),
-                RecordStagingModel.updated_at.set(datetime.now(tz=timezone("UTC"))),
-            ]
-        )
+        actions = [
+            RecordStagingModel.data.set(data),
+            RecordStagingModel.updated_at.set(datetime.now(tz=timezone("UTC"))),
+        ]
+        if updated_by:
+            actions.append(RecordStagingModel.updated_by.set(updated_by))
+        record_staging.update(actions=actions)
         return
     except:
         log = traceback.format_exc()
@@ -664,7 +686,14 @@ def get_record_async_handler(logger, **kwargs):
             "use_external_id", False
         ),
     )
-    insert_update_record_staging(logger, function_request.record_type, record)
+    insert_update_record_staging(
+        logger,
+        function_request.record_type,
+        record,
+        updated_by=function_request.variables.__dict__["attribute_values"].get(
+            "requested_by"
+        ),
+    )
 
     return [record.internalId]
 
@@ -687,7 +716,14 @@ def get_record_by_variables_async_handler(logger, **kwargs):
         function_request.record_type, **variables
     )
     if record is not None:
-        insert_update_record_staging(logger, function_request.record_type, record)
+        insert_update_record_staging(
+            logger,
+            function_request.record_type,
+            record,
+            updated_by=function_request.variables.__dict__["attribute_values"].get(
+                "requested_by"
+            ),
+        )
 
         return [record.internalId]
     return []
@@ -923,9 +959,7 @@ def insert_update_record_async_handler(logger, **kwargs):
             internal_id,
         )
     elif record_type == "task":
-        internal_id = soap_connector.insert_update_task(
-            variables["transaction_record_type"], variables["entity"]
-        )
+        internal_id = soap_connector.insert_update_task(variables["entity"])
         record = soap_connector.get_record(
             record_type,
             internal_id,
@@ -933,7 +967,9 @@ def insert_update_record_async_handler(logger, **kwargs):
     else:
         raise Exception(f"Unsupported record type ({record_type}).")
 
-    insert_update_record_staging(logger, record_type, record)
+    insert_update_record_staging(
+        logger, record_type, record, updated_by=variables.get("requested_by")
+    )
 
     return [record.internalId]
 
