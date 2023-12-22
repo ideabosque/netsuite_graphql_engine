@@ -25,6 +25,7 @@ class SelectValueType(ObjectType):
 class FunctionRequestType(ObjectType):
     function_name = String()
     request_id = String()
+    account_id = String()
     record_type = String()
     variables = String()
     status = String()

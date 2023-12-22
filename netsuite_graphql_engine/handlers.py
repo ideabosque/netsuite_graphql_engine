@@ -18,6 +18,7 @@ from .types import SelectValueType, FunctionRequestType
 from .models import FunctionRequestModel, RecordStagingModel
 
 datetime_format = "%Y-%m-%dT%H:%M:%S%z"
+account_id = None
 soap_connector = None
 rest_connector = None
 default_timezone = None
@@ -34,7 +35,8 @@ class FunctionError(Exception):
 
 
 def handlers_init(logger, **setting):
-    global soap_connector, rest_connector, default_timezone, aws_lambda, aws_dynamodb, async_function_name, async_functions, txmap, num_async_tasks
+    global account_id, soap_connector, rest_connector, default_timezone, aws_lambda, aws_dynamodb, async_function_name, async_functions, txmap, num_async_tasks
+    account_id = setting.get("ACCOUNT")
     soap_connector = SOAPConnector(logger, **setting)
     rest_connector = RESTConnector(logger, **setting)
     default_timezone = setting.get("TIMEZONE", "UTC")
@@ -112,6 +114,7 @@ def funct_decorator(cache_duration=1):
                 function_request_type = {
                     "function_name": function_request.function_name,
                     "request_id": function_request.request_id,
+                    "account_id": function_request.account_id,
                     "record_type": function_request.record_type,
                     "variables": function_request.variables.__dict__[
                         "attribute_values"
@@ -271,7 +274,7 @@ def transform_value(record_type, key, value):
     if key not in txmap[record_type].keys():
         return value
 
-    tx_funct = lambda value: eval(txmap[record_type][key])
+    tx_funct = lambda value: eval(txmap[account_id][record_type][key])
     return tx_funct(value)
 
 
@@ -398,7 +401,7 @@ def get_data_detail(info, record_type, internal_ids):
     if len(internal_ids) == 0:
         return []
     results = RecordStagingModel.updated_at_index.query(
-        record_type,
+        f"{account_id}-{record_type}",
         None,
         RecordStagingModel.internal_id.is_in(*internal_ids),
     )
@@ -456,9 +459,9 @@ def get_function_request(info, **kwargs):
         return function_request, data
 
     variables = convert_values(kwargs)
-    results = FunctionRequestModel.query(
+    results = FunctionRequestModel.account_id_index.query(
         function_name,
-        None,
+        FunctionRequestModel.account_id == account_id,
         (
             FunctionRequestModel.updated_at
             >= datetime.now(tz=timezone("UTC")) - timedelta(hours=cache_duration)
@@ -505,7 +508,8 @@ def get_function_request(info, **kwargs):
             return last_entity, data
 
     request_id = str(uuid.uuid1().int >> 64)
-    data = {
+    attributes = {
+        "account_id": account_id,
         "record_type": record_type,
         "variables": variables,
         "internal_ids": [],
@@ -513,11 +517,11 @@ def get_function_request(info, **kwargs):
         "updated_at": datetime.now(tz=timezone("UTC")),
     }
     if kwargs.get("requested_by"):
-        data["updated_by"] = kwargs.get("requested_by")
+        attributes["updated_by"] = kwargs.get("requested_by")
     FunctionRequestModel(
         function_name,
         request_id,
-        **data,
+        **attributes,
     ).save()
 
     function_request = FunctionRequestModel.get(function_name, request_id)
@@ -561,7 +565,7 @@ def insert_update_record_staging(logger, record_type, record, updated_by=None):
         data = object_to_dict(record_type, record)
 
         count = RecordStagingModel.count(
-            record_type,
+            f"{account_id}-{record_type}",
             RecordStagingModel.internal_id == record.internalId,
         )
         if count == 0:
@@ -573,13 +577,15 @@ def insert_update_record_staging(logger, record_type, record, updated_by=None):
             if updated_by:
                 record_staging["updated_by"] = updated_by
             RecordStagingModel(
-                record_type,
+                f"{account_id}-{record_type}",
                 record.internalId,
                 **record_staging,
             ).save()
             return
 
-        record_staging = RecordStagingModel.get(record_type, record.internalId)
+        record_staging = RecordStagingModel.get(
+            f"{account_id}-{record_type}", record.internalId
+        )
         actions = [
             RecordStagingModel.data.set(data),
             RecordStagingModel.updated_at.set(datetime.now(tz=timezone("UTC"))),
