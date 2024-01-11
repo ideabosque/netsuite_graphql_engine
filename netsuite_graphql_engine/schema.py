@@ -14,6 +14,7 @@ from .queries import (
     resolve_record_by_variables,
     resolve_records,
 )
+from silvaengine_utility import JSON
 
 
 def type_class():
@@ -33,38 +34,41 @@ class Query(ObjectType):
     record = Field(
         FunctionRequestType,
         record_type=String(required=True),
-        id=String(required=True),
-        use_external_id=Boolean(),
+        # id=String(required=True),
+        # use_external_id=Boolean(),
         request_id=String(),
         cache_duration=Decimal(),
+        variables=JSON(required=True),
         requested_by=String(),
     )
 
     record_by_variables = Field(
         FunctionRequestType,
         record_type=String(required=True),
-        field=String(required=True),
-        value=String(required=True),
-        operator=String(),
+        # field=String(required=True),
+        # value=String(required=True),
+        # operator=String(),
         request_id=String(),
         cache_duration=Decimal(),
+        variables=JSON(required=True),
         requested_by=String(),
     )
 
     records = Field(
         FunctionRequestType,
         record_type=String(required=True),
-        cut_date=String(),
-        hours=Decimal(),
-        vendor_id=String(),
-        subsidiary=String(),
-        internal_ids=List(String),
+        # cut_date=String(),
+        # hours=Decimal(),
+        # vendor_id=String(),
+        # subsidiary=String(),
+        # internal_ids=List(String),
         request_id=String(),
         cache_duration=Decimal(),
-        data_detail=Boolean(),
-        manual_dispatch=Boolean(),
-        request_page_size=Int(),
-        request_page_number=Int(),
+        # data_detail=Boolean(),
+        # manual_dispatch=Boolean(),
+        # request_page_size=Int(),
+        # request_page_number=Int(),
+        variables=JSON(required=True),
         requested_by=String(),
     )
 

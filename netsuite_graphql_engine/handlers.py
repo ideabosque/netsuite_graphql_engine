@@ -4,7 +4,7 @@ from __future__ import print_function
 
 __author__ = "bibow"
 
-import functools, inspect, uuid, boto3, traceback, copy, time, asyncio, math
+import functools, uuid, boto3, traceback, copy, time, asyncio, math
 import concurrent.futures
 from boto3.dynamodb.conditions import Key
 from datetime import datetime, timedelta
@@ -82,10 +82,14 @@ def funct_decorator(cache_duration=1):
                 kwargs.update({"cache_duration": cache_duration})
 
             try:
-                request_page_size = int(kwargs.get("request_page_size", 10))
-                request_page_number = int(kwargs.get("request_page_number", 1))
+                request_page_size = int(
+                    kwargs["variables"].get("request_page_size", 10)
+                )
+                request_page_number = int(
+                    kwargs["variables"].get("request_page_number", 1)
+                )
                 function_request, data = original_function(*args, **kwargs)
-                manual_dispatch = kwargs.get("manual_dispatch", False)
+                manual_dispatch = kwargs["variables"].get("manual_dispatch", False)
 
                 ## Dispatch the request to the lambda worker to get the data.
                 actions = [
@@ -97,7 +101,10 @@ def funct_decorator(cache_duration=1):
                     actions.append(
                         FunctionRequestModel.updated_by.set(kwargs.get("requested_by"))
                     )
-                if function_request.status == "initial" and not manual_dispatch:
+                if (
+                    function_request.status in ["initial", "fetch_later"]
+                    and not manual_dispatch
+                ):
                     actions.append(FunctionRequestModel.status.set("in_progress"))
                     function_request.update(actions=actions)
                     dispatch_async_function(
@@ -111,28 +118,24 @@ def funct_decorator(cache_duration=1):
                     actions.append(FunctionRequestModel.status.set("fetch_later"))
                     function_request.update(actions=actions)
 
-                function_request_type = {
-                    "function_name": function_request.function_name,
-                    "request_id": function_request.request_id,
-                    "account_id": function_request.account_id,
-                    "record_type": function_request.record_type,
-                    "variables": function_request.variables.__dict__[
-                        "attribute_values"
-                    ],
-                    "status": function_request.status,
-                    "internal_ids": function_request.internal_ids,
-                    "log": function_request.log,
-                    "request_page_size": request_page_size,
-                    "request_page_number": request_page_number,
-                    "total_records": len(function_request.internal_ids),
-                    "created_at": function_request.created_at,
-                    "updated_at": function_request.updated_at,
-                    "updated_by": function_request.updated_by,
-                }
+                _function_request = FunctionRequestModel.get(
+                    function_request.function_name,
+                    function_request.request_id,
+                ).__dict__["attribute_values"]
+                _function_request.update(
+                    {
+                        "request_page_size": request_page_size,
+                        "request_page_number": request_page_number,
+                        "total_records": len(_function_request["internal_ids"]),
+                        "variables": _function_request["variables"].__dict__[
+                            "attribute_values"
+                        ],
+                    }
+                )
                 if data is not None:
-                    function_request_type.update({"data": data})
+                    _function_request.update({"data": data})
 
-                return FunctionRequestType(**function_request_type)
+                return FunctionRequestType(**_function_request)
             except:
                 log = traceback.format_exc()
                 args[0].context.get("logger").exception(log)
@@ -172,6 +175,7 @@ def async_decorator(original_function):
                     [
                         FunctionRequestModel.internal_ids.set(internal_ids),
                         FunctionRequestModel.status.set("success"),
+                        FunctionRequestModel.log.set(None),
                     ]
                 )
                 function_request.update(actions=actions)
@@ -269,9 +273,11 @@ def async_decorator(original_function):
 
 
 def transform_value(record_type, key, value):
-    if record_type not in txmap.keys():
+    if account_id not in txmap.keys():
         return value
-    if key not in txmap[record_type].keys():
+    if record_type not in txmap[account_id].keys():
+        return value
+    if key not in txmap[account_id][record_type].keys():
         return value
 
     tx_funct = lambda value: eval(txmap[account_id][record_type][key])
@@ -434,12 +440,12 @@ def extract_requested_fields(info):
 
 
 def get_function_request(info, **kwargs):
-    record_type = kwargs.pop("record_type")
-    request_id = kwargs.pop("request_id", None)
-    function_name = kwargs.pop("function_name")
-    cache_duration = float(kwargs.pop("cache_duration"))
-    request_page_size = int(kwargs.get("request_page_size", 10))
-    request_page_number = int(kwargs.get("request_page_number", 1))
+    record_type = kwargs.get("record_type")
+    request_id = kwargs.get("request_id", None)
+    function_name = kwargs.get("function_name")
+    cache_duration = float(kwargs.get("cache_duration"))
+    request_page_size = int(kwargs["variables"].get("request_page_size", 10))
+    request_page_number = int(kwargs["variables"].get("request_page_number", 1))
     start_idx = (request_page_number - 1) * request_page_size
     end_idx = start_idx + request_page_size
 
@@ -458,7 +464,7 @@ def get_function_request(info, **kwargs):
         )
         return function_request, data
 
-    variables = convert_values(kwargs)
+    variables = convert_values(kwargs["variables"])
     results = FunctionRequestModel.account_id_index.query(
         function_name,
         FunctionRequestModel.account_id == account_id,
@@ -489,7 +495,7 @@ def get_function_request(info, **kwargs):
                 lambda x: x["diff_data"] == {}
                 or (
                     len(x["diff_data"].affected_root_keys.items) == 1
-                    and "requested_by" in x["diff_data"].affected_root_keys.items
+                    and "job_id" in x["diff_data"].affected_root_keys.items
                 ),
                 diff_data_list,
             )
@@ -601,7 +607,7 @@ def insert_update_record_staging(logger, record_type, record, updated_by=None):
         raise
 
 
-async def insert_update_records_staging(logger, record_type, records):
+async def insert_update_records_staging(logger, record_type, records, updated_by):
     try:
         # Initialize the DynamoDB table resource
         table = aws_dynamodb.Table("nge-record_stagging")
@@ -616,7 +622,9 @@ async def insert_update_records_staging(logger, record_type, records):
 
             # Check if the record already exists
             response = table.query(
-                KeyConditionExpression=Key("record_type").eq(record_type)
+                KeyConditionExpression=Key("account_id_record_type").eq(
+                    f"{account_id}-{record_type}"
+                )
                 & Key("internal_id").eq(record.internalId)
             )
 
@@ -624,7 +632,7 @@ async def insert_update_records_staging(logger, record_type, records):
             if response["Count"] == 0:
                 table.put_item(
                     Item={
-                        "record_type": record_type,
+                        "account_id_record_type": f"{account_id}-{record_type}",
                         "internal_id": record.internalId,
                         "data": data,
                         "created_at": datetime.now(tz=timezone("UTC")).strftime(
@@ -633,11 +641,12 @@ async def insert_update_records_staging(logger, record_type, records):
                         "updated_at": datetime.now(tz=timezone("UTC")).strftime(
                             "%Y-%m-%dT%H:%M:%S.%f%z"
                         ),
+                        "updated_by": updated_by,
                     }
                 )
             else:
                 # If a matching record exists, update it
-                update_expression = "SET #data = :data, updated_at = :updated_at"
+                update_expression = "SET #data = :data, updated_at = :updated_at, updated_by = :updated_by"
                 expression_attribute_names = {
                     "#data": "data"
                 }  # Use an ExpressionAttributeNames to map 'data' to a reserved keyword
@@ -646,9 +655,13 @@ async def insert_update_records_staging(logger, record_type, records):
                     ":updated_at": datetime.now(tz=timezone("UTC")).strftime(
                         "%Y-%m-%dT%H:%M:%S.%f%z"
                     ),
+                    ":updated_by": updated_by,
                 }
                 table.update_item(
-                    Key={"record_type": record_type, "internal_id": record.internalId},
+                    Key={
+                        "account_id_record_type": f"{account_id}-{record_type}",
+                        "internal_id": record.internalId,
+                    },
                     UpdateExpression=update_expression,
                     ExpressionAttributeNames=expression_attribute_names,
                     ExpressionAttributeValues=expression_attribute_values,
@@ -696,9 +709,7 @@ def get_record_async_handler(logger, **kwargs):
         logger,
         function_request.record_type,
         record,
-        updated_by=function_request.variables.__dict__["attribute_values"].get(
-            "requested_by"
-        ),
+        updated_by=function_request.updated_by,
     )
 
     return [record.internalId]
@@ -726,9 +737,7 @@ def get_record_by_variables_async_handler(logger, **kwargs):
             logger,
             function_request.record_type,
             record,
-            updated_by=function_request.variables.__dict__["attribute_values"].get(
-                "requested_by"
-            ),
+            updated_by=function_request.updated_by,
         )
 
         return [record.internalId]
@@ -782,6 +791,7 @@ def get_records_async_handler(logger, **kwargs):
                         "function_name": function_request.function_name,
                         "request_id": function_request.request_id,
                         "endpoint_id": kwargs.get("endpoint_id"),
+                        "updated_by": function_request.updated_by,
                     },
                 ),
             )
@@ -817,14 +827,18 @@ def get_records_async_handler(logger, **kwargs):
 
 
 # Define a function for processing records using ThreadPoolExecutor with more threads
-def process_records_with_threadpool(logger, record_type, records, delete_rcords=False):
+def process_records_with_threadpool(
+    logger, record_type, records, delete_rcords=False, updated_by=None
+):
     tasks = []
     num_segments = num_async_tasks
 
-    async def task_wrapper(logger, record_type, records_slice):
+    async def task_wrapper(logger, record_type, records_slice, updated_by):
         if delete_rcords:
             return await delete_records_staging(logger, record_type, records_slice)
-        return await insert_update_records_staging(logger, record_type, records_slice)
+        return await insert_update_records_staging(
+            logger, record_type, records_slice, updated_by
+        )
 
     # Create a multiprocessing Pool
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
@@ -844,7 +858,9 @@ def process_records_with_threadpool(logger, record_type, records, delete_rcords=
             tasks.append(
                 executor.submit(
                     asyncio.run,
-                    task_wrapper(logger, record_type, records[start_idx:end_idx]),
+                    task_wrapper(
+                        logger, record_type, records[start_idx:end_idx], updated_by
+                    ),
                 )
             )
 
@@ -913,7 +929,9 @@ def get_records_async_result(logger, record_type, **kwargs):
     logger.info(
         f"Start insert or update {record_type} with {len(records)} records of the page {result['page_index']} in staging at {time.strftime('%X')}."
     )
-    internal_ids = process_records_with_threadpool(logger, record_type, records)
+    internal_ids = process_records_with_threadpool(
+        logger, record_type, records, updated_by=kwargs.get("updated_by")
+    )
     logger.info(
         f"End insert or update {record_type} with {len(records)} records of the page {result['page_index']} in staging at {time.strftime('%X')}."
     )
@@ -974,7 +992,7 @@ def insert_update_record_async_handler(logger, **kwargs):
         raise Exception(f"Unsupported record type ({record_type}).")
 
     insert_update_record_staging(
-        logger, record_type, record, updated_by=variables.get("requested_by")
+        logger, record_type, record, updated_by=function_request.updated_by
     )
 
     return [record.internalId]
@@ -999,6 +1017,7 @@ def delete_function_request_handler(info, **kwargs):
         function_request.record_type,
         records,
         delete_rcords=True,
+        updated_by=kwargs.get("updated_by"),
     )
 
     function_request.delete()
