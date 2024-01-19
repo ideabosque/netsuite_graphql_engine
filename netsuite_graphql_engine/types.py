@@ -22,6 +22,14 @@ class SelectValueType(ObjectType):
     value_id = String()
 
 
+class SuiteqlResultType(ObjectType):
+    count = Int()
+    has_more = Boolean()
+    offset = Int()
+    total_results = Int()
+    items = List(JSON)
+
+
 class FunctionRequestType(ObjectType):
     function_name = String()
     request_id = String()

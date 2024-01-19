@@ -164,9 +164,18 @@ fragment SelectValueInfo on SelectValueType {
     valueId
 }
 
+fragment SuiteqlResultInfo on SuiteqlResultType {
+    count
+    hasMore
+    offset
+    totalResults
+    items
+}
+
 fragment FunctionRequestInfo on FunctionRequestType {
     functionName
     requestId
+    accountId
     recordType
     variables
     status
@@ -174,10 +183,11 @@ fragment FunctionRequestInfo on FunctionRequestType {
     internalIds
     log
     requestPageSize
-    pageNumber
+    requestPageNumber
     totalRecords
     createdAt
     updatedAt
+    updatedBy
 }
 
 query ping {
@@ -198,19 +208,33 @@ query getSelectValues(
     }
 }
 
+query getSuiteqlResult(
+    $suiteql: String!,
+    $limit: Int,
+    $offset: Int
+) {
+    suiteqlResult(
+        suiteql: $suiteql,
+        limit: $limit,
+        offset: $offset
+    ) {
+        ...SuiteqlResultInfo
+    }
+}
+
 query getRecord(
     $recordType: String!,
-    $id: String!,
-    $useExternalId: Boolean,
     $requestId: String,
-    $cacheDuration: Decimal
+    $cacheDuration: Decimal,
+    $variables: JSON!,
+    $requestedBy: String
 ) {
     record(
         recordType: $recordType,
-        id: $id,
-        useExternalId: $useExternalId,
         requestId: $requestId,
-        cacheDuration: $cacheDuration
+        cacheDuration: $cacheDuration,
+        variables: $variables,
+        requestedBy: $requestedBy
     ) {
         ...FunctionRequestInfo
     }
@@ -218,19 +242,17 @@ query getRecord(
 
 query getRecordByVariables(
     $recordType: String!,
-    $field: String!,
-    $value: String!,
-    $operator: String,
     $requestId: String,
-    $cacheDuration: Decimal
+    $cacheDuration: Decimal,
+    $variables: JSON!,
+    $requestedBy: String
 ) {
     recordByVariables(
         recordType: $recordType,
-        field: $field,
-        value: $value,
-        operator: $operator,
         requestId: $requestId,
-        cacheDuration: $cacheDuration
+        cacheDuration: $cacheDuration,
+        variables: $variables,
+        requestedBy: $requestedBy
     ) {
         ...FunctionRequestInfo
     }
@@ -238,29 +260,17 @@ query getRecordByVariables(
 
 query getRecords(
     $recordType: String!,
-    $cutDate: String,
-    $hours: Decimal,
-    $vendorId: String,
-    $subsidiary: String,
-    $internalIds: [String],
     $requestId: String,
     $cacheDuration: Decimal,
-    $manualDispatch: Boolean,
-    $requestPageSize: Int,
-    $pageNumber: Int
+    $variables: JSON!,
+    $requestedBy: String
 ) {
     records(
         recordType: $recordType,
-        cutDate: $cutDate,
-        hours: $hours,
-        vendorId: $vendorId,
-        subsidiary: $subsidiary,
-        internalIds: $internalIds,
         requestId: $requestId,
         cacheDuration: $cacheDuration,
-        manualDispatch: $manualDispatch,
-        requestPageSize: $requestPageSize,
-        pageNumber: $pageNumber
+        variables: $variables,
+        requestedBy: $requestedBy
     ) {
         ...FunctionRequestInfo
     }
@@ -268,19 +278,33 @@ query getRecords(
 
 mutation insertUpdateRecord(
     $recordType: String!,
-    $entity: JSON!,
+    $variables: JSON!,
     $transactionRecordType: String,
-    $requestId: String
+    $requestId: String,
+    $requestedBy: String
 ) {
     insertUpdateRecord(
         recordType: $recordType,
-        entity: $entity,
+        variables: $variables,
         transactionRecordType: $transactionRecordType,
-        requestId: $requestId
+        requestId: $requestId,
+        requestedBy: $requestedBy
     ) {
         record{
             ...FunctionRequestInfo
         }
+    }
+}
+
+mutation deleteFunctionRequest(
+    $functionName: String!,
+    $requestId: String!
+) {
+    deleteFunctionRequest(
+        functionName: $functionName,
+        requestId: $requestId
+    ) {
+        ok
     }
 }
 ```
@@ -346,8 +370,10 @@ Let's explore querying with the `record` operation, which empowers you to fetch 
 ```python
 variables = {
     "recordType": "salesOrder",
-    "id": "123456",  # Replace with your desired internal or external ID.
-    "useExternalId": False,  # Set to 'True' if using an external ID.
+    "variables": {
+        "id": "123456",  # Replace with your desired internal or external ID.
+        "useExternalId": False  # Set to 'True' if using an external ID.
+    }
     "requestId": "async_request_123",  # Optional async request ID.
     "cacheDuration": 2,  # Cache data for 2 hours (adjust as needed).
 }
@@ -386,9 +412,11 @@ Now, let's delve into an example of querying the `recordByVariables` operation. 
 ```python
 variables = {
     "recordType": "salesOrder",
-    "field": "tranId",
-    "value": "SO-XXX-1234",
-    "operator": "is",
+    "variables": {
+        "field": "tranId",
+        "value": "SO-XXX-1234",
+        "operator": "is"
+    }
     "cacheDuration": 0,  # Set to 0 to bypass caching.
     "requestId": "async_request_123",  # Optional async request ID.
 }
@@ -432,13 +460,16 @@ This example demonstrates how to query records in NetSuite, starting from a spec
 ```python
 variables = {
     "recordType": "salesOrder",
-    "cutDate": "2023-07-24T16:32:24-08:00",
-    "hours": 0,
-    "cacheDuration": 0,
-    "manualDispatch": True,
     "requestId": "async_request_123",
-    "requestPageSize": 10,
-    "pageNumber": 2,
+    "cacheDuration": 0,
+    "variables": {
+        "cutDate": "2023-07-24T16:32:24-08:00",
+        "hours": 0,
+        "cacheDuration": 0,
+        "manualDispatch": True,
+        "requestPageSize": 10,
+        "pageNumber": 2
+    }
 }
 payload = {
     "query": document,
@@ -474,49 +505,51 @@ This example illustrates how to use the 'insertUpdateRecord' mutation to either 
 ## Insert/update a sales order.
 variables = {
     "recordType": "salesOrder",
-    "entity": {
-        "billingAddress": {
-            "addr1": "123 Random St",
-            "attention": "John Doe",
-            "city": "Randomville",
-            "country": "_randomCountry",
-            "firstName": "John",
-            "lastName": "Doe",
-            "state": "Random State",
-            "zip": "12345",
-        },
-        "class": "Random Class",
-        "customFields": {
-            "custbody_credit_card_type": "Random Type",
-            "custbody_inside_delivery": False,
-            "custbody_lift_gate": False,
-            "custbody_delivery_type": "Random Delivery",
-            "custbody_fob_remarks": "Random Remarks",
-            "custbody_freight_terms": "Random Terms",
-            "custbody_order_type": "Random Order Type",
-        },
-        "email": "john.doe@random.com",
-        "entityStatus": "CUSTOMER-Closed Won",
-        "firstName": "John",
-        "items": [
-            {
-                "customFields": {},
-                "price": "19.99",
-                "qty": "2.0000",
-                "sku": "random-001",
-            }
-        ],
-        "lastName": "Doe",
-        "nsCustomerId": "987654",
-        "otherRefNum": "0987654321",
-        "paymentMethod": "Random Payment",
-        "shipDate": 30,
-        "shipMethod": "Random Ship Method",
-        "shippingAddress": {"attention": " ", "country": "_randomCountry"},
-        "source": "Random Source",
-        "subsidiary": "Random Subsidiary",
-    },
     "requestId": "async_request_123",
+    "variables": {
+        "entity": {
+            "billingAddress": {
+                "addr1": "123 Random St",
+                "attention": "John Doe",
+                "city": "Randomville",
+                "country": "_randomCountry",
+                "firstName": "John",
+                "lastName": "Doe",
+                "state": "Random State",
+                "zip": "12345",
+            },
+            "class": "Random Class",
+            "customFields": {
+                "custbody_credit_card_type": "Random Type",
+                "custbody_inside_delivery": False,
+                "custbody_lift_gate": False,
+                "custbody_delivery_type": "Random Delivery",
+                "custbody_fob_remarks": "Random Remarks",
+                "custbody_freight_terms": "Random Terms",
+                "custbody_order_type": "Random Order Type",
+            },
+            "email": "john.doe@random.com",
+            "entityStatus": "CUSTOMER-Closed Won",
+            "firstName": "John",
+            "items": [
+                {
+                    "customFields": {},
+                    "price": "19.99",
+                    "qty": "2.0000",
+                    "sku": "random-001",
+                }
+            ],
+            "lastName": "Doe",
+            "nsCustomerId": "987654",
+            "otherRefNum": "0987654321",
+            "paymentMethod": "Random Payment",
+            "shipDate": 30,
+            "shipMethod": "Random Ship Method",
+            "shippingAddress": {"attention": " ", "country": "_randomCountry"},
+            "source": "Random Source",
+            "subsidiary": "Random Subsidiary",
+        }
+    }
 }
 payload = {
     "query": document,

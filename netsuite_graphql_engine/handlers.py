@@ -14,7 +14,7 @@ from pytz import timezone
 from silvaengine_utility import Utility
 from silvaengine_dynamodb_base import monitor_decorator
 from suitetalk_connector import SOAPConnector, RESTConnector
-from .types import SelectValueType, FunctionRequestType
+from .types import SelectValueType, SuiteqlResultType, FunctionRequestType
 from .models import FunctionRequestModel, RecordStagingModel
 
 datetime_format = "%Y-%m-%dT%H:%M:%S%z"
@@ -564,6 +564,26 @@ def resolve_select_values_handler(info, **kwargs):
     return [
         SelectValueType(**{"value": k, "value_id": v}) for k, v in select_values.items()
     ]
+
+
+@monitor_decorator
+def get_suiteql_result(info, **kwargs):
+    return rest_connector.execute_suiteql(
+        kwargs["suiteql"],
+        limit=kwargs.get("limit"),
+        offset=kwargs.get("offset"),
+    )
+
+
+def resolve_suiteql_result_handler(info, **kwargs):
+    suiteql_result = get_suiteql_result(info, **kwargs)
+    return SuiteqlResultType(
+        count=int(suiteql_result["count"]),
+        has_more=suiteql_result["hasMore"],
+        offset=int(suiteql_result["offset"]),
+        total_results=int(suiteql_result["totalResults"]),
+        items=suiteql_result["items"],
+    )
 
 
 def insert_update_record_staging(logger, record_type, record, updated_by=None):
