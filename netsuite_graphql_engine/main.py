@@ -44,7 +44,7 @@ def deploy() -> list:
                     "support_methods": ["POST"],
                     "is_auth_required": False,
                     "is_graphql": False,
-                    "settings": "beta_core_api",
+                    "settings": "netsuite_graphql_engine",
                     "disabled_in_resources": True,  # Ignore adding to resource list.
                 },
                 "netsuite_get_records_async": {
@@ -56,7 +56,7 @@ def deploy() -> list:
                     "support_methods": ["POST"],
                     "is_auth_required": False,
                     "is_graphql": False,
-                    "settings": "beta_core_api",
+                    "settings": "netsuite_graphql_engine",
                     "disabled_in_resources": True,  # Ignore adding to resource list.
                 },
                 "netsuite_insert_update_record_async": {
@@ -68,7 +68,7 @@ def deploy() -> list:
                     "support_methods": ["POST"],
                     "is_auth_required": False,
                     "is_graphql": False,
-                    "settings": "beta_core_api",
+                    "settings": "netsuite_graphql_engine",
                     "disabled_in_resources": True,  # Ignore adding to resource list.
                 },
                 "netsuite_graphql": {
@@ -78,6 +78,10 @@ def deploy() -> list:
                         {
                             "action": "selectValues",
                             "label": "View Select Values",
+                        },
+                        {
+                            "action": "suiteqlResult",
+                            "label": "View SuiteQL Result",
                         },
                         {
                             "action": "record",
@@ -96,6 +100,10 @@ def deploy() -> list:
                         {
                             "action": "insertUpdateRecord",
                             "label": "Create Update Record",
+                        },
+                        {
+                            "action": "deleteFunctionRequest",
+                            "label": "Delete Function Request",
                         },
                     ],
                     "type": "RequestResponse",
