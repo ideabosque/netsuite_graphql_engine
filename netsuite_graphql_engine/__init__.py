@@ -5,5 +5,5 @@ from __future__ import print_function
 __author__ = "bibow"
 
 __all__ = ["main"]
-from .main import NetSuiteGraphQLEngine
+from .main import NetSuiteGraphQLEngine, deploy
 from .types import SuiteqlResultType
