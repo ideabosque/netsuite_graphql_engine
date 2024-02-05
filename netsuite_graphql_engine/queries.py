@@ -6,6 +6,7 @@ __author__ = "bibow"
 
 from .handlers import (
     resolve_select_values_handler,
+    resolve_suiteql_result_handler,
     resolve_record_handler,
     resolve_record_by_variables_handler,
     resolve_records_handler,
@@ -14,6 +15,10 @@ from .handlers import (
 
 def resolve_select_values(info, **kwargs):
     return resolve_select_values_handler(info, **kwargs)
+
+
+def resolve_suiteql_result(info, **kwargs):
+    return resolve_suiteql_result_handler(info, **kwargs)
 
 
 def resolve_record(info, **kwargs):
