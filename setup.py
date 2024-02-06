@@ -3,6 +3,7 @@
 =====================
 
 """
+
 from setuptools import find_packages, setup
 
 setup(
@@ -19,7 +20,7 @@ setup(
     include_package_data=True,
     platforms="any",
     install_requires=[
-        "SuiteTalk-Connector>=0.0.3",
+        "SuiteTalk-Connector",
         "graphene",
         "pynamodb",
         "boto3",
