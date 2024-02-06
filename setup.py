@@ -20,7 +20,7 @@ setup(
     include_package_data=True,
     platforms="any",
     install_requires=[
-        "SuiteTalk-Connector>=0.0.4b1",
+        "SuiteTalk-Connector",
         "graphene",
         "pynamodb",
         "boto3",
