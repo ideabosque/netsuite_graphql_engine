@@ -35,7 +35,7 @@ class FunctionRequestType(ObjectType):
     request_id = String()
     account_id = String()
     record_type = String()
-    variables = String()
+    variables = JSON()
     status = String()
     data = List(JSON)
     internal_ids = List(String)
