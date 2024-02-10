@@ -107,7 +107,6 @@ def funct_decorator(cache_duration=1):
                 ):
                     actions.append(FunctionRequestModel.status.set("in_progress"))
                     function_request.update(actions=actions)
-                    print(f"endpoint_id: {args[0].context.get('endpoint_id')}")
                     dispatch_async_function(
                         args[0].context.get("logger"),
                         async_functions.get(function_request.function_name),
