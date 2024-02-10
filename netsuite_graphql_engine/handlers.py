@@ -68,7 +68,7 @@ def handlers_init(logger, **setting):
     async_function_name = setting.get("ASYNC_FUNCTION_NAME")
     async_functions = setting.get("ASYNC_FUNCTIONS")
     txmap = setting.get("TXMAP")
-    num_async_tasks = setting.get("NUM_ASYNC_TASKS", 10)
+    num_async_tasks = int(setting.get("NUM_ASYNC_TASKS", 10))
 
 
 def funct_decorator(cache_duration=1):
