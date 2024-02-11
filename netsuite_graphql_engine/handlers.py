@@ -696,22 +696,24 @@ async def insert_update_records_staging(logger, record_type, records, updated_by
 
 
 async def delete_records_staging(logger, record_type, records):
-    try:
-        # Initialize the DynamoDB table resource
-        table = aws_dynamodb.Table("nge-record_stagging")
-        internal_ids = []
-        for record in records:
+    # Initialize the DynamoDB table resource
+    table = aws_dynamodb.Table("nge-record_stagging")
+    internal_ids = []
+    for record in records:
+        try:
             # Check if the record already exists
             table.delete_item(
-                Key={"record_type": record_type, "internal_id": record["internal_id"]}
+                Key={
+                    "account_id_record_type": f"{account_id}-{record_type}",
+                    "internal_id": record["internal_id"],
+                }
             )
             internal_ids.append(record["internal_id"])
-        return internal_ids
-    except:
-        log = traceback.format_exc()
-        logger.exception(log)
-        logger.info(Utility.json_dumps(object_to_dict(record_type, record)))
-        raise
+        except:
+            log = traceback.format_exc()
+            logger.exception(log)
+            raise
+    return internal_ids
 
 
 @monitor_decorator
