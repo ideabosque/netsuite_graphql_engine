@@ -4,22 +4,22 @@ from __future__ import print_function
 
 __author__ = "bibow"
 
-from graphene import (
-    ObjectType,
-    Field,
-    List,
-    String,
-    Int,
-    Decimal,
-    DateTime,
-    Boolean,
-)
+from graphene import Boolean, DateTime, Decimal, Field, Int, List, ObjectType, String
+
 from silvaengine_utility import JSON
 
 
 class SelectValueType(ObjectType):
     value = String()
     value_id = String()
+
+
+class DeletedRecordType(ObjectType):
+    name = String()
+    internal_id = String()
+    external_id = String()
+    type = String()
+    deleted_date = DateTime()
 
 
 class SuiteqlResultType(ObjectType):

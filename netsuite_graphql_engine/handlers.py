@@ -4,18 +4,33 @@ from __future__ import print_function
 
 __author__ = "bibow"
 
-import functools, uuid, boto3, traceback, copy, time, asyncio, math
+import asyncio
 import concurrent.futures
-from boto3.dynamodb.conditions import Key
+import copy
+import functools
+import math
+import time
+import traceback
+import uuid
 from datetime import datetime, timedelta
-from deepdiff import DeepDiff
 from decimal import Decimal
+
+import boto3
+from boto3.dynamodb.conditions import Key
+from deepdiff import DeepDiff
 from pytz import timezone
-from silvaengine_utility import Utility
+
 from silvaengine_dynamodb_base import monitor_decorator
-from suitetalk_connector import SOAPConnector, RESTConnector
-from .types import SelectValueType, SuiteqlResultType, FunctionRequestType
+from silvaengine_utility import Utility
+from suitetalk_connector import RESTConnector, SOAPConnector
+
 from .models import FunctionRequestModel, RecordStagingModel
+from .types import (
+    DeletedRecordType,
+    FunctionRequestType,
+    SelectValueType,
+    SuiteqlResultType,
+)
 
 datetime_format = "%Y-%m-%dT%H:%M:%S%z"
 account_id = None
@@ -564,6 +579,29 @@ def resolve_select_values_handler(info, **kwargs):
     return [
         SelectValueType(**{"value": k, "value_id": v}) for k, v in select_values.items()
     ]
+
+
+@monitor_decorator
+def get_deleted_records(info, **kwargs):
+    record_type = kwargs.pop("record_type")
+    result = soap_connector.get_deleted_records(
+        record_type,
+        **kwargs,
+    )
+    return [
+        DeletedRecordType(
+            name=record.record.name,
+            internal_id=record.record.internalId,
+            external_id=record.record.externalId,
+            type=record.record.type,
+            deleted_date=record.deletedDate,
+        )
+        for record in result["records"]
+    ]
+
+
+def resolve_deleted_records_handler(info, **kwargs):
+    return get_deleted_records(info, **kwargs)
 
 
 @monitor_decorator

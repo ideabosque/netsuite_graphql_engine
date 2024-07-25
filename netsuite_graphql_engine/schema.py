@@ -5,21 +5,30 @@ from __future__ import print_function
 __author__ = "bibow"
 
 import time
-from graphene import ObjectType, String, List, Field, Int, DateTime, Boolean, Decimal
-from .types import SelectValueType, SuiteqlResultType, FunctionRequestType
-from .mutations import InsertUpdateRecord, DeleteFunctionRequest
+
+from graphene import Boolean, DateTime, Decimal, Field, Int, List, ObjectType, String
+
+from silvaengine_utility import JSON
+
+from .mutations import DeleteFunctionRequest, InsertUpdateRecord
 from .queries import (
-    resolve_select_values,
-    resolve_suiteql_result,
+    resolve_deleted_records,
     resolve_record,
     resolve_record_by_variables,
     resolve_records,
+    resolve_select_values,
+    resolve_suiteql_result,
 )
-from silvaengine_utility import JSON
+from .types import (
+    DeletedRecordType,
+    FunctionRequestType,
+    SelectValueType,
+    SuiteqlResultType,
+)
 
 
 def type_class():
-    return [SelectValueType, SuiteqlResultType, FunctionRequestType]
+    return [SelectValueType, DeletedRecordType, SuiteqlResultType, FunctionRequestType]
 
 
 class Query(ObjectType):
@@ -30,6 +39,13 @@ class Query(ObjectType):
         record_type=String(required=True),
         field=String(required=True),
         sublist=String(),
+    )
+
+    deleted_records = List(
+        DeletedRecordType,
+        record_type=String(required=True),
+        cut_date=String(required=True),
+        end_date=String(required=True),
     )
 
     suiteql_result = Field(
@@ -71,6 +87,9 @@ class Query(ObjectType):
 
     def resolve_select_values(self, info, **kwargs):
         return resolve_select_values(info, **kwargs)
+
+    def resolve_deleted_records(self, info, **kwargs):
+        return resolve_deleted_records(info, **kwargs)
 
     def resolve_suiteql_result(self, info, **kwargs):
         return resolve_suiteql_result(info, **kwargs)

@@ -5,16 +5,21 @@ from __future__ import print_function
 __author__ = "bibow"
 
 from .handlers import (
+    resolve_deleted_records_handler,
+    resolve_record_by_variables_handler,
+    resolve_record_handler,
+    resolve_records_handler,
     resolve_select_values_handler,
     resolve_suiteql_result_handler,
-    resolve_record_handler,
-    resolve_record_by_variables_handler,
-    resolve_records_handler,
 )
 
 
 def resolve_select_values(info, **kwargs):
     return resolve_select_values_handler(info, **kwargs)
+
+
+def resolve_deleted_records(info, **kwargs):
+    return resolve_deleted_records_handler(info, **kwargs)
 
 
 def resolve_suiteql_result(info, **kwargs):
