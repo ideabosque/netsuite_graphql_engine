@@ -1019,7 +1019,7 @@ def insert_update_record_async_handler(logger, **kwargs):
     function_request = kwargs.get("function_request")
     variables = copy.deepcopy(function_request.variables.__dict__["attribute_values"])
     record_type = function_request.record_type
-    if record_type in ["salesOrder", "purchaseOrder"]:
+    if record_type in ["salesOrder", "purchaseOrder", "itemFulfillment", "itemReceipt"]:
         tran_id = soap_connector.insert_update_transaction(
             record_type, variables["entity"]
         )
