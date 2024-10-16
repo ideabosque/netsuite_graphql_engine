@@ -4,18 +4,33 @@ from __future__ import print_function
 
 __author__ = "bibow"
 
-import functools, uuid, boto3, traceback, copy, time, asyncio, math
+import asyncio
 import concurrent.futures
-from boto3.dynamodb.conditions import Key
+import copy
+import functools
+import math
+import time
+import traceback
+import uuid
 from datetime import datetime, timedelta
-from deepdiff import DeepDiff
 from decimal import Decimal
+
+import boto3
+from boto3.dynamodb.conditions import Key
+from deepdiff import DeepDiff
 from pytz import timezone
-from silvaengine_utility import Utility
+
 from silvaengine_dynamodb_base import monitor_decorator
-from suitetalk_connector import SOAPConnector, RESTConnector
-from .types import SelectValueType, SuiteqlResultType, FunctionRequestType
+from silvaengine_utility import Utility
+from suitetalk_connector import RESTConnector, SOAPConnector
+
 from .models import FunctionRequestModel, RecordStagingModel
+from .types import (
+    DeletedRecordType,
+    FunctionRequestType,
+    SelectValueType,
+    SuiteqlResultType,
+)
 
 datetime_format = "%Y-%m-%dT%H:%M:%S%z"
 account_id = None
@@ -68,7 +83,7 @@ def handlers_init(logger, **setting):
     async_function_name = setting.get("ASYNC_FUNCTION_NAME")
     async_functions = setting.get("ASYNC_FUNCTIONS")
     txmap = setting.get("TXMAP")
-    num_async_tasks = setting.get("NUM_ASYNC_TASKS", 10)
+    num_async_tasks = int(setting.get("NUM_ASYNC_TASKS", 10))
 
 
 def funct_decorator(cache_duration=1):
@@ -567,6 +582,29 @@ def resolve_select_values_handler(info, **kwargs):
 
 
 @monitor_decorator
+def get_deleted_records(info, **kwargs):
+    record_type = kwargs.pop("record_type")
+    result = soap_connector.get_deleted_records(
+        record_type,
+        **kwargs,
+    )
+    return [
+        DeletedRecordType(
+            name=record.record.name,
+            internal_id=record.record.internalId,
+            external_id=record.record.externalId,
+            type=record.record.type,
+            deleted_date=record.deletedDate,
+        )
+        for record in result["records"]
+    ]
+
+
+def resolve_deleted_records_handler(info, **kwargs):
+    return get_deleted_records(info, **kwargs)
+
+
+@monitor_decorator
 def get_suiteql_result(info, **kwargs):
     return rest_connector.execute_suiteql(
         kwargs["suiteql"],
@@ -696,22 +734,24 @@ async def insert_update_records_staging(logger, record_type, records, updated_by
 
 
 async def delete_records_staging(logger, record_type, records):
-    try:
-        # Initialize the DynamoDB table resource
-        table = aws_dynamodb.Table("nge-record_stagging")
-        internal_ids = []
-        for record in records:
+    # Initialize the DynamoDB table resource
+    table = aws_dynamodb.Table("nge-record_stagging")
+    internal_ids = []
+    for record in records:
+        try:
             # Check if the record already exists
             table.delete_item(
-                Key={"record_type": record_type, "internal_id": record["internal_id"]}
+                Key={
+                    "account_id_record_type": f"{account_id}-{record_type}",
+                    "internal_id": record["internal_id"],
+                }
             )
             internal_ids.append(record["internal_id"])
-        return internal_ids
-    except:
-        log = traceback.format_exc()
-        logger.exception(log)
-        logger.info(Utility.json_dumps(object_to_dict(record_type, record)))
-        raise
+        except:
+            log = traceback.format_exc()
+            logger.exception(log)
+            raise
+    return internal_ids
 
 
 @monitor_decorator
@@ -979,7 +1019,7 @@ def insert_update_record_async_handler(logger, **kwargs):
     function_request = kwargs.get("function_request")
     variables = copy.deepcopy(function_request.variables.__dict__["attribute_values"])
     record_type = function_request.record_type
-    if record_type in ["salesOrder", "purchaseOrder"]:
+    if record_type in ["salesOrder", "purchaseOrder", "itemFulfillment", "itemReceipt"]:
         tran_id = soap_connector.insert_update_transaction(
             record_type, variables["entity"]
         )

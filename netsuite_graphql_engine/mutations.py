@@ -27,7 +27,6 @@ class InsertUpdateRecord(Mutation):
     class Arguments:
         record_type = String(required=True)
         variables = JSON(required=True)
-        transaction_record_type = String()
         request_id = String()
         requested_by = String()
 

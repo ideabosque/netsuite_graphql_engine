@@ -18,12 +18,12 @@ repository = "https://github.com/ideabosque/netsuite_graphql_engine"
 
 [tool.poetry.dependencies]
 python = "^3.6"
-SuiteTalk-Connector = "^0.0.3"
+SuiteTalk-Connector = "*"
 graphene = "*"
 pynamodb = "*"
 boto3 = "*"
-silvaengine_utility = "^0.0.2"
-silvaengine_dynamodb_base = "^0.0.1"
+silvaengine_utility = "*"
+silvaengine_dynamodb_base = "*"
 deepdiff = "*"
 
 [tool.poetry.dev-dependencies]
