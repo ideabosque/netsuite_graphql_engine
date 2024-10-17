@@ -395,6 +395,7 @@ def dispatch_async_worker(logger, async_function, request_id, start_page, end_pa
 def dispatch_async_function(
     logger, async_function, request_id, start_page=None, end_page=None, endpoint_id=None
 ):
+    logger.info(f"async_function: {async_function}, endpoint_id: {endpoint_id}")
     params = {"request_id": str(request_id)}
     if start_page and end_page:
         params.update({"start_page": start_page, "end_page": end_page})
@@ -777,6 +778,7 @@ def get_record_async_handler(logger, **kwargs):
 
 @funct_decorator(cache_duration=1)
 def resolve_record_handler(info, **kwargs):
+    info.context.get("logger").info(f"endpoint_id: {info.context.get('endpoint_id')}")
     return get_function_request(info, **kwargs)
 
 
