@@ -273,7 +273,7 @@ def async_decorator(original_function):
             log = traceback.format_exc()
             args[0].exception(log)
             actions = [
-                FunctionRequestModel.status.set("failed"),
+                FunctionRequestModel.status.set("fail"),
                 FunctionRequestModel.log.set(log),
                 FunctionRequestModel.updated_at.set(datetime.now(tz=timezone("UTC"))),
             ]
